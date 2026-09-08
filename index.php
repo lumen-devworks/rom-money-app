@@ -71,8 +71,11 @@ define('AGENT_OPTIONAL_DOC_TYPES', ['rccm','dfe','patente']);
 // production : ca invaliderait tous les abonnements push existants et
 // forcerait chaque utilisateur a se reabonner. Peuvent etre surchargees
 // par variables d'environnement si besoin de les faire tourner un jour.
-define('VAPID_PUBLIC_KEY',  getenv('VAPID_PUBLIC_KEY')  ?: 'BKdX0VYx7EkhmZmKkErhdT4jXqigeNOTb-nKS0n3ZceHocyN36sYDE5ABBfp6ZZrqDEoHuNLxoMQsQhfK6T3hc8');
-define('VAPID_PRIVATE_KEY', getenv('VAPID_PRIVATE_KEY') ?: 'd_bCbqnSxZAhmDatuvpxxrfUrhic778mfV4oGJW2LCo');
+// Pas de valeur de repli codee en dur (contrairement a avant) : une cle
+// visible dans le code source d'un depot, meme prive, n'est plus vraiment
+// secrete. Doit etre definie sur Render comme les autres secrets.
+define('VAPID_PUBLIC_KEY',  getenv('VAPID_PUBLIC_KEY')  ?: null);
+define('VAPID_PRIVATE_KEY', getenv('VAPID_PRIVATE_KEY') ?: null);
 define('VAPID_SUBJECT',     getenv('VAPID_SUBJECT')     ?: 'mailto:supportrommoney@gmail.com');
 
 // CORS restreint : seules les origines listees ici peuvent appeler l'API
