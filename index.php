@@ -85,7 +85,7 @@ define('VAPID_SUBJECT',     getenv('VAPID_SUBJECT')     ?: 'mailto:supportrommon
 // /install ouvert directement) ne sont pas concernes par le CORS - cette
 // restriction ne protege que contre les appels caches depuis un site tiers.
 $ALLOWED_ORIGINS = [
-    'https://romariosia07-lab.github.io',
+    'https://lumen-devworks.github.io',
     // A ajouter ici le jour ou l'app Android (Capacitor) est publiee, si
     // elle appelle l'API depuis un contexte WebView avec un Origin distinct
     // (ex: 'capacitor://localhost' ou 'https://localhost').
