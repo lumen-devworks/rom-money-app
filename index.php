@@ -1100,6 +1100,33 @@ function merchant_document_list() {
     ok(['documents'=>$rows]);
 }
 
+// Carte marchande imprimee (voir merchant_physical_cards en fin de fichier) :
+// contrairement aux cartes personnelles, aucun agent n'intervient - le
+// marchand l'active lui-meme depuis son propre compte deja existant, en
+// tapant/scannant le code recu sur la carte vierge. Meme invariant que cote
+// personnel : jamais deux cartes actives pour le meme compte a la fois.
+function merchant_activate_card() {
+    $pl = merchant_auth(); $b = body();
+    $cardCode = strtoupper(trim($b['card_code'] ?? ''));
+    if(!$cardCode) fail('Code carte requis');
+    $card = q("SELECT * FROM merchant_physical_cards WHERE card_code=?",[$cardCode])->fetch();
+    if(!$card) fail('Carte inconnue',404);
+    if($card['status']!=='unassigned') fail('Cette carte est deja active ou bloquee',422);
+    $otherActive = q("SELECT id FROM merchant_physical_cards WHERE merchant_id=? AND status='active'",[$pl['sub']])->fetch();
+    if($otherActive) fail('Vous avez deja une carte active - liberez-la d\'abord aupres du support pour en activer une nouvelle.',422);
+    q("UPDATE merchant_physical_cards SET status='active', merchant_id=?, activated_at=NOW() WHERE id=?",[$pl['sub'],$card['id']]);
+    admin_log('merchant_card_activate','success',null,'Carte '.$cardCode.' activee par le marchand lui-meme');
+    ok(['card_code'=>$cardCode],'Carte activee');
+}
+
+// Etat de la carte du marchand connecte (pour l'ecran "Ma carte" cote
+// ROM_BUSINESS) - null si aucune carte active.
+function merchant_my_card() {
+    $pl = merchant_auth();
+    $card = q("SELECT card_code, activated_at FROM merchant_physical_cards WHERE merchant_id=? AND status='active'",[$pl['sub']])->fetch();
+    ok(['card'=>$card ?: null]);
+}
+
 // WALLET
 function route_wallet($action) {
     match($action) {
@@ -1117,6 +1144,7 @@ function route_wallet($action) {
         'renew-qr'       => wallet_renew_qr(),
         'resolve-qr'     => wallet_resolve_qr(),
         'resolve-merchant-qr' => wallet_resolve_merchant_qr(),
+        'resolve-merchant-card' => wallet_resolve_merchant_card(),
         'stats'          => wallet_stats(),
         'stats-full'     => wallet_stats_full(),
         'limit-status'   => wallet_limit_status(),
@@ -1366,6 +1394,9 @@ function route_merchant($action) {
         'doc-upload'         => merchant_document_upload(),
         'doc-list'           => merchant_document_list(),
         'kyc-ocr-extract'    => merchant_kyc_ocr_extract(),
+        'activate-card'      => merchant_activate_card(),
+        'my-card'            => merchant_my_card(),
+        'resolve-merchant-card' => merchant_resolve_merchant_card(),
         'notifications'      => merchant_notifications(),
         default              => fail('Action inconnue',404)
     };
@@ -2088,6 +2119,36 @@ function wallet_resolve_merchant_qr() {
     if(count($parts)<3 || $parts[0]!=='M') fail('QR invalide');
     $m = q("SELECT m.id,m.business_name,m.location_type,m.verified FROM merchants m JOIN merchant_wallets mw ON mw.merchant_id=m.id WHERE m.id=? AND mw.qr_seed=?",[$parts[1],$parts[2]])->fetch();
     if(!$m) fail('QR invalide',404);
+    $m['verified'] = (bool)($m['verified']??false);
+    ok($m,'Marchand trouve');
+}
+
+// Equivalent de wallet_resolve_merchant_qr() mais pour une CARTE marchande
+// imprimee (voir merchant_physical_cards) plutot qu'un QR affiche dans
+// l'app - le client scanne le code colle sur le comptoir. Renvoie exactement
+// la meme forme que wallet_resolve_merchant_qr(), donc le meme ecran de
+// paiement (tx_pay_merchant) marche sans aucun changement cote frontend.
+function wallet_resolve_merchant_card() {
+    auth();
+    $code = strtoupper(trim($_GET['card_code'] ?? ''));
+    if(!$code) fail('Code carte requis');
+    $m = q("SELECT m.id,m.business_name,m.location_type,m.verified FROM merchant_physical_cards pc
+            JOIN merchants m ON m.id=pc.merchant_id WHERE pc.card_code=? AND pc.status='active'",[$code])->fetch();
+    if(!$m) fail('Carte invalide',404);
+    $m['verified'] = (bool)($m['verified']??false);
+    ok($m,'Marchand trouve');
+}
+
+// Equivalent de merchant_resolve_merchant_qr() mais pour une carte marchande
+// imprimee (paiement inter-marchand par carte plutot que QR).
+function merchant_resolve_merchant_card() {
+    $pl = merchant_auth();
+    $code = strtoupper(trim($_GET['card_code'] ?? ''));
+    if(!$code) fail('Code carte requis');
+    $m = q("SELECT m.id,m.business_name,m.location_type,m.verified FROM merchant_physical_cards pc
+            JOIN merchants m ON m.id=pc.merchant_id WHERE pc.card_code=? AND pc.status='active'",[$code])->fetch();
+    if(!$m) fail('Carte invalide',404);
+    if($m['id']===$pl['sub']) fail('Vous ne pouvez pas vous payer vous-meme');
     $m['verified'] = (bool)($m['verified']??false);
     ok($m,'Marchand trouve');
 }
@@ -5925,6 +5986,15 @@ function route_admin($action) {
         'cards-mark-printed' => admin_mark_cards_printed(),
         'cards-unmark-printed' => admin_unmark_cards_printed(),
         'cards-select-unprinted' => admin_select_unprinted_cards(),
+        'merchant-cards-generate' => admin_generate_merchant_cards(),
+        'merchant-cards-list'    => admin_list_merchant_cards(),
+        'merchant-cards-block'   => admin_block_merchant_card(),
+        'merchant-cards-reactivate' => admin_reactivate_merchant_card(),
+        'merchant-cards-release' => admin_release_merchant_card(),
+        'merchant-cards-fix-orphaned' => admin_fix_orphaned_merchant_cards(),
+        'merchant-cards-mark-printed' => admin_mark_merchant_cards_printed(),
+        'merchant-cards-unmark-printed' => admin_unmark_merchant_cards_printed(),
+        'merchant-cards-select-unprinted' => admin_select_unprinted_merchant_cards(),
         'agent-set-float-cap'      => admin_agent_set_float_cap(),
         'agent-pending-list'       => admin_agent_list_pending(),
         'agent-documents'          => admin_agent_documents(),
@@ -8597,6 +8667,10 @@ function admin_merchant_delete_account() {
     if($mw){
         q("DELETE FROM sub_vaults WHERE wallet_id=?",[$mw['id']]);
     }
+    // Libere une eventuelle carte marchande AVANT de supprimer le compte,
+    // plutot que de la laisser pointer vers un merchant_id qui n'existe
+    // plus (meme bug deja corrige cote comptes personnels).
+    q("UPDATE merchant_physical_cards SET status='unassigned', merchant_id=NULL, activated_at=NULL WHERE merchant_id=?",[$mid]);
     q("DELETE FROM merchant_wallets WHERE merchant_id=?",[$mid]);
     q("DELETE FROM merchants WHERE id=?",[$mid]);
 
@@ -9130,6 +9204,190 @@ function admin_select_unprinted_cards() {
     $count = (int)($b['count'] ?? 0);
     if($count < 1 || $count > 500) fail('Le nombre doit etre entre 1 et 500');
     $rows = q("SELECT card_code FROM physical_cards WHERE status='unassigned' AND printed_at IS NULL ORDER BY created_at ASC LIMIT $count")->fetchAll();
+    ok(['codes'=>array_column($rows,'card_code')]);
+}
+
+// ============================================================
+// CARTES MARCHANDES — espace separe des cartes personnelles (table dediee,
+// onglet admin dedie). Sert a imprimer le QR "encaisser" d'un marchand sur
+// une carte physique a poser au comptoir, pour que les clients scannent et
+// paient sans que le marchand ait besoin de sortir son telephone a chaque
+// fois. Contrairement aux cartes personnelles, l'activation ne passe jamais
+// par un agent : le marchand l'active lui-meme, en self-service, depuis son
+// propre compte ROM_BUSINESS deja existant (voir merchant_activate_card()).
+// ============================================================
+function admin_generate_merchant_cards() {
+    $b = body();
+    check_admin_password($b);
+    $count = (int)($b['count'] ?? 0);
+    if($count < 1 || $count > 500) fail('Le nombre de cartes doit etre entre 1 et 500');
+    $codes = [];
+    $inserted = 0;
+    while($inserted < $count){
+        $code = 'M'.strtoupper(bin2hex(random_bytes(5))); // prefixe M : distingue visuellement d'une carte personnelle
+        $exists = q("SELECT 1 FROM merchant_physical_cards WHERE card_code=?",[$code])->fetch();
+        if($exists) continue;
+        q("INSERT INTO merchant_physical_cards (id,card_code) VALUES (?,?)",[uid(),$code]);
+        $codes[] = $code;
+        $inserted++;
+    }
+    admin_log('merchant_cards_generate','success',null,$count.' carte(s) marchande(s) generee(s)');
+    ok(['codes'=>$codes],$count.' carte(s) generee(s)');
+}
+
+function admin_list_merchant_cards() {
+    $b = body();
+    check_admin_password($b);
+    $page = max(1, (int)($b['page'] ?? 1));
+    $perPage = 25;
+    $offset = ($page - 1) * $perPage;
+    $status = trim($b['status'] ?? '');
+    $search = trim($b['search'] ?? '');
+    $countryFilter = is_array($b['country'] ?? null) ? $b['country'] : null;
+    list($availableCountries, $restore) = admin_apply_country_filter($countryFilter);
+
+    list($scopeSql, $scopeParams) = admin_country_scope_clause('m.country');
+    $scopeWhere = "1=1"; $scopeParamsFinal = [];
+    if($scopeSql !== ''){
+        $scopeWhere .= " AND (mc.merchant_id IS NULL OR (1=1$scopeSql))";
+        $scopeParamsFinal = $scopeParams;
+    }
+    if($search !== ''){
+        $scopeWhere .= " AND (m.phone_number ILIKE ? OR m.business_name ILIKE ? OR mc.card_code ILIKE ?)";
+        $like = '%'.$search.'%';
+        array_push($scopeParamsFinal, $like, $like, $like);
+    }
+    $dateFrom = trim($b['date_from'] ?? '');
+    $dateTo = trim($b['date_to'] ?? '');
+    if($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)){
+        $scopeWhere .= " AND mc.created_at::date >= ?"; $scopeParamsFinal[] = $dateFrom;
+    }
+    if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){
+        $scopeWhere .= " AND mc.created_at::date <= ?"; $scopeParamsFinal[] = $dateTo;
+    }
+    $where = $scopeWhere; $params = $scopeParamsFinal;
+    if(in_array($status, ['unassigned','active','blocked'], true)){
+        $where .= " AND mc.status=?"; $params[] = $status;
+    } else {
+        $where .= " AND mc.status != 'blocked'";
+    }
+    $total = (int)q("SELECT COUNT(*) FROM merchant_physical_cards mc LEFT JOIN merchants m ON m.id=mc.merchant_id WHERE $where", $params)->fetchColumn();
+    $rows = q("SELECT mc.id,mc.card_code,mc.status,mc.activated_at,mc.created_at,
+               mc.blocked_at,mc.blocked_by_admin,mc.blocked_reason,
+               mc.printed_at,mc.print_count,
+               m.business_name,m.phone_number,m.country
+               FROM merchant_physical_cards mc LEFT JOIN merchants m ON m.id=mc.merchant_id
+               WHERE $where ORDER BY
+                 CASE mc.status WHEN 'unassigned' THEN 0 WHEN 'active' THEN 1 ELSE 2 END,
+                 CASE WHEN mc.status='unassigned' THEN mc.created_at WHEN mc.status='active' THEN mc.activated_at END ASC,
+                 mc.created_at DESC
+               LIMIT $perPage OFFSET $offset", $params)->fetchAll();
+    $countRows = q("SELECT mc.status, COUNT(*) c FROM merchant_physical_cards mc LEFT JOIN merchants m ON m.id=mc.merchant_id
+               WHERE $scopeWhere GROUP BY mc.status", $scopeParamsFinal)->fetchAll();
+    $counts = ['unassigned'=>0,'active'=>0,'blocked'=>0];
+    foreach($countRows as $cr){ if(isset($counts[$cr['status']])) $counts[$cr['status']] = (int)$cr['c']; }
+    $restore();
+    ok(['cards'=>$rows,'total'=>$total,'page'=>$page,'per_page'=>$perPage,'available_countries'=>$availableCountries,'country_filter'=>$countryFilter,'counts'=>$counts]);
+}
+
+function admin_block_merchant_card() {
+    $b = body();
+    check_admin_password($b);
+    $cardCode = strtoupper(trim($b['card_code'] ?? ''));
+    $reason = trim($b['reason'] ?? '');
+    if(!$cardCode) fail('Code carte requis');
+    if(!$reason) fail('La raison est obligatoire (journalisee)');
+    $card = q("SELECT mc.*, m.phone_number, m.country FROM merchant_physical_cards mc LEFT JOIN merchants m ON m.id=mc.merchant_id WHERE mc.card_code=?",[$cardCode])->fetch();
+    if(!$card) fail('Carte introuvable',404);
+    if($card['country']) admin_check_country_access($card['country']);
+    $adminName = $GLOBALS['_current_admin_name'] ?? 'Admin Principal';
+    q("UPDATE merchant_physical_cards SET status='blocked', blocked_at=NOW(), blocked_by_admin=?, blocked_reason=? WHERE id=?",[$adminName,$reason,$card['id']]);
+    admin_log('merchant_card_block','success',$card['phone_number'],dk('d_ref_with_reason',['ref'=>$cardCode,'reason'=>$reason]));
+    ok(null,'Carte bloquee');
+}
+
+function admin_reactivate_merchant_card() {
+    $b = body();
+    check_admin_password($b);
+    $cardCode = strtoupper(trim($b['card_code'] ?? ''));
+    if(!$cardCode) fail('Code carte requis');
+    $card = q("SELECT mc.*, m.phone_number, m.country FROM merchant_physical_cards mc LEFT JOIN merchants m ON m.id=mc.merchant_id WHERE mc.card_code=?",[$cardCode])->fetch();
+    if(!$card) fail('Carte introuvable',404);
+    if($card['status'] !== 'blocked') fail('Cette carte n\'est pas bloquee',422);
+    if($card['country']) admin_check_country_access($card['country']);
+    if(!$card['merchant_id']){
+        q("UPDATE merchant_physical_cards SET status='unassigned', blocked_at=NULL, blocked_by_admin=NULL, blocked_reason=NULL WHERE id=?",[$card['id']]);
+        admin_log('merchant_card_reactivate','success',null,dk('d_ref_with_reason',['ref'=>$cardCode,'reason'=>'Carte vierge debloquee, remise en stock']));
+        ok(null,'Carte debloquee et remise en stock');
+        return;
+    }
+    $otherActive = q("SELECT id FROM merchant_physical_cards WHERE merchant_id=? AND status='active'",[$card['merchant_id']])->fetch();
+    if($otherActive) fail('Ce marchand a deja une autre carte active - impossible de reactiver aussi celle-ci.',422);
+    q("UPDATE merchant_physical_cards SET status='active', blocked_at=NULL, blocked_by_admin=NULL, blocked_reason=NULL WHERE id=?",[$card['id']]);
+    admin_log('merchant_card_reactivate','success',$card['phone_number'],dk('d_ref_with_reason',['ref'=>$cardCode,'reason'=>'Carte retrouvee par le marchand']));
+    ok(null,'Carte reactivee');
+}
+
+function admin_release_merchant_card() {
+    $b = body();
+    check_admin_password($b);
+    $cardCode = strtoupper(trim($b['card_code'] ?? ''));
+    $reason = trim($b['reason'] ?? '');
+    if(!$cardCode) fail('Code carte requis');
+    if(!$reason) fail('La raison est obligatoire (journalisee)');
+    $card = q("SELECT mc.*, m.phone_number, m.country FROM merchant_physical_cards mc LEFT JOIN merchants m ON m.id=mc.merchant_id WHERE mc.card_code=?",[$cardCode])->fetch();
+    if(!$card) fail('Carte introuvable',404);
+    if($card['status'] !== 'active') fail('Cette carte n\'est pas active',422);
+    if($card['country']) admin_check_country_access($card['country']);
+    q("UPDATE merchant_physical_cards SET status='unassigned', merchant_id=NULL, activated_at=NULL WHERE id=?",[$card['id']]);
+    admin_log('merchant_card_release','success',$card['phone_number'],dk('d_ref_with_reason',['ref'=>$cardCode,'reason'=>$reason]));
+    ok(null,'Carte liberee');
+}
+
+function admin_fix_orphaned_merchant_cards() {
+    $b = body();
+    check_admin_password($b);
+    $orphans = q("SELECT mc.id FROM merchant_physical_cards mc
+        WHERE mc.status='active' AND mc.merchant_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM merchants m WHERE m.id=mc.merchant_id)")->fetchAll();
+    $count = count($orphans);
+    if($count > 0){
+        q("UPDATE merchant_physical_cards SET status='unassigned', merchant_id=NULL, activated_at=NULL
+            WHERE status='active' AND merchant_id IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM merchants m WHERE m.id=merchant_physical_cards.merchant_id)");
+        admin_log('merchant_cards_fix_orphaned','success',null,$count.' carte(s) marchande(s) orpheline(s) liberee(s)');
+    }
+    ok(['fixed'=>$count],$count.' carte(s) reparee(s)');
+}
+
+function admin_mark_merchant_cards_printed() {
+    $b = body();
+    check_admin_password($b);
+    $codes = is_array($b['card_codes'] ?? null) ? array_map('strtoupper', array_filter(array_map('trim', $b['card_codes']))) : [];
+    if(!$codes) fail('Aucun code fourni');
+    if(count($codes) > 500) fail('Maximum 500 cartes a la fois');
+    $placeholders = implode(',', array_fill(0, count($codes), '?'));
+    q("UPDATE merchant_physical_cards SET printed_at=COALESCE(printed_at,NOW()), print_count=print_count+1 WHERE card_code IN ($placeholders)", $codes);
+    ok(null,'Cartes marquees imprimees');
+}
+
+function admin_unmark_merchant_cards_printed() {
+    $b = body();
+    check_admin_password($b);
+    $codes = is_array($b['card_codes'] ?? null) ? array_map('strtoupper', array_filter(array_map('trim', $b['card_codes']))) : [];
+    if(!$codes) fail('Aucun code fourni');
+    if(count($codes) > 500) fail('Maximum 500 cartes a la fois');
+    $placeholders = implode(',', array_fill(0, count($codes), '?'));
+    q("UPDATE merchant_physical_cards SET printed_at=NULL, print_count=0 WHERE card_code IN ($placeholders)", $codes);
+    ok(null,'Marquage impression annule');
+}
+
+function admin_select_unprinted_merchant_cards() {
+    $b = body();
+    check_admin_password($b);
+    $count = (int)($b['count'] ?? 0);
+    if($count < 1 || $count > 500) fail('Le nombre doit etre entre 1 et 500');
+    $rows = q("SELECT card_code FROM merchant_physical_cards WHERE status='unassigned' AND printed_at IS NULL ORDER BY created_at ASC LIMIT $count")->fetchAll();
     ok(['codes'=>array_column($rows,'card_code')]);
 }
 
@@ -10419,7 +10677,26 @@ function route_install() {
     // bloque toute activation en double, mais un vrai gaspillage/confusion
     // operationnel).
     "ALTER TABLE physical_cards ADD COLUMN IF NOT EXISTS printed_at TIMESTAMP",
-    "ALTER TABLE physical_cards ADD COLUMN IF NOT EXISTS print_count INT DEFAULT 0"
+    "ALTER TABLE physical_cards ADD COLUMN IF NOT EXISTS print_count INT DEFAULT 0",
+    // Cartes marchandes - espace separe des cartes personnelles (table
+    // dediee). Pas d'activated_by_agent_id : contrairement aux cartes
+    // personnelles, l'activation ne passe jamais par un agent, toujours en
+    // self-service depuis le propre compte ROM_BUSINESS du marchand.
+    "CREATE TABLE IF NOT EXISTS merchant_physical_cards (
+        id VARCHAR(36) PRIMARY KEY,
+        card_code VARCHAR(20) UNIQUE NOT NULL,
+        status VARCHAR(20) DEFAULT 'unassigned',
+        merchant_id VARCHAR(36),
+        activated_at TIMESTAMP,
+        blocked_at TIMESTAMP,
+        blocked_by_admin VARCHAR(150),
+        blocked_reason VARCHAR(255),
+        printed_at TIMESTAMP,
+        print_count INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )",
+    "CREATE INDEX IF NOT EXISTS idx_merchant_physical_cards_code ON merchant_physical_cards(card_code)",
+    "CREATE INDEX IF NOT EXISTS idx_merchant_physical_cards_merchant ON merchant_physical_cards(merchant_id)"
     ];
 
     $created = [];

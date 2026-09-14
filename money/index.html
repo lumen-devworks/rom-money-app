@@ -818,6 +818,7 @@ html,body{height:100%;background:#085041;overflow:hidden;color:var(--t1)}
       <button class="admin-tab-btn" onclick="adminTab('merchants')" style="padding:8px 14px;border:1px solid var(--bord);border-radius:20px;background:none;color:var(--gold-text);font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0"><span data-i18n-admin="admin_tab_merchants">Marchands</span></button>
       <button class="admin-tab-btn" onclick="adminTab('agents')" style="padding:8px 14px;border:1px solid var(--bord);border-radius:20px;background:none;color:var(--gold-text);font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0"><span data-i18n-admin="admin_tab_agents">Agents</span><span id="admin-agents-badge" style="display:none;background:var(--re);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:5px;font-weight:800"></span></button>
       <button class="admin-tab-btn" onclick="adminTab('cards')" style="padding:8px 14px;border:1px solid var(--bord);border-radius:20px;background:none;color:var(--gold-text);font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0"><span data-i18n-admin="admin_tab_cards">Cartes</span></button>
+      <button class="admin-tab-btn" onclick="adminTab('merchant-cards')" style="padding:8px 14px;border:1px solid var(--bord);border-radius:20px;background:none;color:var(--gold-text);font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0"><span data-i18n-admin="admin_tab_merchant_cards">Cartes marchand</span></button>
       <button class="admin-tab-btn" onclick="adminTab('account')" style="padding:8px 14px;border:1px solid var(--bord);border-radius:20px;background:none;color:var(--gold-text);font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0"><span data-i18n-admin="admin_tab_account">Compte</span></button>
       <button class="admin-tab-btn" onclick="adminTab('tx')" style="padding:8px 14px;border:1px solid var(--bord);border-radius:20px;background:none;color:var(--gold-text);font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0"><span data-i18n-admin="admin_tab_tx">Transaction</span></button>
       <button class="admin-tab-btn" onclick="adminTab('audit')" style="padding:8px 14px;border:1px solid var(--bord);border-radius:20px;background:none;color:var(--gold-text);font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0"><span data-i18n-admin="admin_tab_audit">Journal</span></button>
@@ -1252,6 +1253,43 @@ html,body{height:100%;background:#085041;overflow:hidden;color:var(--t1)}
       <div id="cards-selection-toolbar" style="display:none;margin-bottom:14px"></div>
       <div id="cards-list-box"><div class="admin-empty" data-i18n-admin="admin_loading">Chargement...</div></div>
       <div id="cards-pagination" style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:12px"></div>
+    </div>
+
+    <div id="admin-panel-merchant-cards" class="admin-panel" style="display:none">
+      <div class="admin-stitle" data-i18n-admin="admin_mcards_title">Cartes marchand</div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:14px" data-i18n-admin="admin_mcards_desc">Cartes QR imprimables a poser sur le comptoir d'un marchand - les clients scannent pour payer, sans que le marchand ait besoin de sortir son telephone. Espace separe des cartes personnelles : un marchand active lui-meme sa carte depuis son propre compte ROM_BUSINESS, jamais via un agent.</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <input class="finput" id="mcards-gen-count" type="number" inputmode="numeric" placeholder="Nombre de cartes" style="margin-bottom:0" value="10">
+        <button class="btn-w" id="admin-mcards-generate-btn" style="margin-bottom:0;width:auto;padding:11px 16px" onclick="adminGenerateMerchantCards()" data-i18n-admin="admin_cards_generate_btn">Générer</button>
+      </div>
+      <div style="font-size:10px;color:var(--t3);margin-bottom:14px" data-i18n-admin="admin_cards_max_note">Maximum 500 cartes par lot.</div>
+      <div id="mcards-gen-result" style="margin-bottom:16px"></div>
+
+      <div class="admin-stitle" style="margin-top:24px;border-top:1px solid var(--bord);padding-top:20px" data-i18n-admin="admin_cards_list_title">Toutes les cartes</div>
+      <div id="mcards-counts-summary" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:14px" data-i18n-admin="admin_mcards_reissue_hint">Carte perdue/volée : bloquez-la ci-dessous. Le marchand active lui-même une nouvelle carte du stock existant, directement depuis son compte ROM_BUSINESS.</div>
+      <div class="frow"><label class="flabel" data-i18n-admin="admin_mcards_search_label">Rechercher (numéro, nom du commerce ou code carte)</label><input class="finput" id="mcards-search" placeholder="0700000000, Chic Shop, A1B2C3D4E5..." oninput="adminLoadMerchantCards(1)"></div>
+      <div class="frow" id="mcards-country-row" style="display:none"><label class="flabel" data-i18n-admin="admin_dash_country_filter_label">Pays (aucun coché = tous)</label>
+        <div id="mcards-country-box" style="display:flex;flex-wrap:wrap;gap:4px" onchange="adminLoadMerchantCards(1)"></div>
+      </div>
+      <div class="frow"><label class="flabel" data-i18n-admin="admin_cards_date_filter_label">Date de génération</label>
+        <div id="dp-mcards-presets" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"></div>
+        <div id="dp-mcards-range" style="font-size:11px;color:var(--t3)"></div>
+      </div>
+      <select class="finput" id="mcards-status-filter" onchange="adminLoadMerchantCards(1)" style="margin-bottom:12px">
+        <option value="" data-i18n-admin="admin_cards_status_all">Statut : Toutes (hors bloquées)</option>
+        <option value="unassigned" data-i18n-admin="admin_cards_status_unassigned">Non activées</option>
+        <option value="active" data-i18n-admin="admin_cards_status_active">Actives</option>
+        <option value="blocked" data-i18n-admin="admin_cards_status_blocked">Bloquées</option>
+      </select>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+        <input class="finput" id="mcards-quickselect-count" type="number" inputmode="numeric" style="margin-bottom:0;width:90px">
+        <button class="btn-w" style="margin-bottom:0;width:auto;padding:10px 14px;font-size:12px" onclick="adminQuickSelectUnprintedMerchant()" data-i18n-admin="admin_cards_quickselect_btn">Sélectionner les N premières jamais imprimées</button>
+      </div>
+      <button class="btn-w" style="margin-bottom:14px;width:auto;padding:10px 14px;font-size:12px" onclick="adminFixOrphanedMerchantCards()" data-i18n-admin="admin_cards_fix_orphaned_btn">🔧 Réparer les cartes orphelines (compte supprimé)</button>
+      <div id="mcards-selection-toolbar" style="display:none;margin-bottom:14px"></div>
+      <div id="mcards-list-box"><div class="admin-empty" data-i18n-admin="admin_loading">Chargement...</div></div>
+      <div id="mcards-pagination" style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:12px"></div>
     </div>
 
     <div id="admin-panel-account" class="admin-panel" style="display:none">
@@ -1884,6 +1922,12 @@ var I18N = {
   admin_cards_unmark_printed_link: {fr:'annuler', en:'undo'},
   admin_cards_unmarked_toast: {fr:'Marquage impression annulé', en:'Print mark undone'},
   admin_tab_cards: {fr:'Cartes', en:'Cards'},
+  admin_tab_merchant_cards: {fr:'Cartes marchand', en:'Merchant cards'},
+  admin_mcards_title: {fr:'Cartes marchand', en:'Merchant cards'},
+  admin_mcards_desc: {fr:"Cartes QR imprimables à poser sur le comptoir d'un marchand - les clients scannent pour payer, sans que le marchand ait besoin de sortir son téléphone. Espace séparé des cartes personnelles : un marchand active lui-même sa carte depuis son propre compte ROM_BUSINESS, jamais via un agent.", en:"Printable QR cards to place on a merchant's counter - customers scan to pay, no need for the merchant to pull out their phone. Separate from personal cards: a merchant activates their own card from their own ROM_BUSINESS account, never through an agent."},
+  admin_mcards_reissue_hint: {fr:'Carte perdue/volée : bloquez-la ci-dessous. Le marchand active lui-même une nouvelle carte du stock existant, directement depuis son compte ROM_BUSINESS.', en:"Lost/stolen card: block it below. The merchant activates a new card from existing stock themselves, directly from their ROM_BUSINESS account."},
+  admin_mcards_search_label: {fr:'Rechercher (numéro, nom du commerce ou code carte)', en:'Search (phone, business name or card code)'},
+  admin_mcards_slogan: {fr:'UNE AFRIQUE, UN PORTEFEUILLE', en:'ONE AFRICA, ONE WALLET'},
   admin_cards_max_note: {fr:'Maximum 500 cartes par lot.', en:'Maximum 500 cards per batch.'},
   admin_cards_list_title: {fr:'Toutes les cartes', en:'All cards'},
   admin_cards_reissue_hint: {fr:"Carte perdue/volée : bloquez-la ci-dessous. Le client n'a rien de plus à faire côté admin — chez n'importe quel agent, il active une carte vierge du stock existant avec son numéro de téléphone habituel (depuis ROM_GUICHET), ce qui relie la nouvelle carte à son compte déjà existant.", en:"Lost/stolen card: block it below. Nothing else is needed on the admin side — at any agent, the customer activates a blank card from existing stock with their usual phone number (from ROM_GUICHET), which links the new card to their existing account."},
@@ -4427,7 +4471,7 @@ function adminReject(id){
 }
 
 function adminTab(name){
-  ['dashboard','announce','kyc','account','tx','audit','countries','users','merchants','agents','cards','alerts','settings','earnings','reviews'].forEach(function(t){
+  ['dashboard','announce','kyc','account','tx','audit','countries','users','merchants','agents','cards','merchant-cards','alerts','settings','earnings','reviews'].forEach(function(t){
     var panel=document.getElementById('admin-panel-'+t);
     if(panel) panel.style.display=(t===name)?'block':'none';
   });
@@ -4447,6 +4491,7 @@ function adminTab(name){
   if(name==='agents'){ adminLoadAgents(1); adminDpRender('agtmv',''); }
   if(name==='tx') adminDpRender('advtx','');
   if(name==='cards') adminLoadCards(1);
+  if(name==='merchant-cards') adminLoadMerchantCards(1);
   if(name==='alerts') adminLoadAlerts();
   if(name==='settings') adminLoadSettings();
   if(name==='earnings') adminShowEarnings();
@@ -6132,6 +6177,360 @@ function adminReactivateCard(cardCode){
     onConfirm:function(){
       apiCall('/admin?action=cards-reactivate','POST',{admin_password:window._adminPw,card_code:cardCode},'').then(function(res){
         if(res&&res.success){ toast(res.message||at('admin_cards_reactivated_toast')); adminLoadCards(1); }
+        else { toast((res&&res.message)||at('admin_error_generic'), true); }
+      }).catch(function(){ toast(at('admin_dash_error_network'), true); });
+    }
+  });
+}
+
+// ═══════════════════════════════════════════
+// ADMIN - Cartes marchand (QR imprime, espace separe des cartes personnelles)
+// ═══════════════════════════════════════════
+// Meme balisage visuel que les cartes personnelles (.print-card, deja
+// stylee), mais le QR encode "MC|<code>" plutot que le code nu - c'est ce
+// prefixe qui permet a handleScannedQR() cote client de distinguer une
+// carte marchande scannee d'un simple numero/QR personnel, voir plus bas.
+function adminMerchantCardMarkup(code, qrId){
+  return '<div class="print-card">'
+    +'<div class="print-card-top-row">'
+    +'<div class="print-card-brand">'
+    +'<img src="./icon-512.png" class="print-card-icon" alt="ROM_MONEY">'
+    +'<div class="print-card-brandname">ROM_<span>MONEY</span></div>'
+    +'</div>'
+    +'<div class="print-card-code">'+code+'</div>'
+    +'</div>'
+    +'<div class="print-card-box" id="'+qrId+'"></div>'
+    +'<div class="print-card-slogan">'+at('admin_mcards_slogan')+'</div>'
+    +'</div>';
+}
+window._mcardsListCache = window._mcardsListCache || {};
+window._mcardsSelected = window._mcardsSelected || new Set();
+
+function adminGenerateMerchantCards(){
+  var count=parseInt(document.getElementById('mcards-gen-count').value,10);
+  if(!count || count<1 || count>500){ toast(at('admin_cards_err_count'), true); return; }
+  var btn=document.getElementById('admin-mcards-generate-btn');
+  if(btn) btn.disabled=true;
+  apiCall('/admin?action=merchant-cards-generate','POST',{admin_password:window._adminPw,count:count},'').then(function(res){
+    if(btn) btn.disabled=false;
+    if(res&&res.success&&res.data&&res.data.codes){
+      var codes=res.data.codes;
+      window._lastGeneratedMerchantCards=codes;
+      var box=document.getElementById('mcards-gen-result');
+      box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+        +'<div style="font-size:11px;color:var(--t3)">'+at('admin_cards_generated_note').replace('{n}',codes.length)+'</div>'
+        +'<button class="btn-w" style="margin-bottom:0;width:auto;padding:8px 14px;font-size:11px" onclick="adminOpenMerchantCardPrintTab(window._lastGeneratedMerchantCards)">'+at('admin_cards_print_btn')+'</button>'
+        +'</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90mm,1fr));gap:10px" id="mcards-qr-grid"></div>';
+      var grid=document.getElementById('mcards-qr-grid');
+      grid.innerHTML=codes.map(function(code, idx){ return adminMerchantCardMarkup(code, 'mcard-qr-'+idx); }).join('');
+      codes.forEach(function(code, idx){ drawQR('mcard-qr-'+idx, 'MC|'+code, 160); });
+      adminLoadMerchantCards(1);
+    } else {
+      toast((res&&res.message)||at('admin_error_generic'), true);
+    }
+  }).catch(function(){ if(btn) btn.disabled=false; toast(at('admin_dash_error_network'), true); });
+}
+function adminShowMerchantCardPreview(code){
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px';
+  overlay.onclick=function(e){ if(e.target===overlay) document.body.removeChild(overlay); };
+  var wrap=document.createElement('div');
+  wrap.innerHTML=adminMerchantCardMarkup(code, 'preview-mcard-qr');
+  wrap.style.cssText='transform:scale(1.6)';
+  var actions=document.createElement('div');
+  actions.style.cssText='display:flex;gap:10px;margin-top:20px';
+  var printBtn=document.createElement('button');
+  printBtn.className='btn-w'; printBtn.style.cssText='margin-bottom:0;width:auto;padding:10px 18px';
+  printBtn.textContent=at('admin_cards_print_btn');
+  printBtn.onclick=function(){ document.body.removeChild(overlay); adminPrintMerchantCardsWithConfirm([code]); };
+  var closeBtn=document.createElement('button');
+  closeBtn.className='btn-w'; closeBtn.style.cssText='margin-bottom:0;width:auto;padding:10px 18px;background:var(--bord);color:var(--t1)';
+  closeBtn.textContent=at('admin_close_btn');
+  closeBtn.onclick=function(){ document.body.removeChild(overlay); };
+  actions.appendChild(printBtn); actions.appendChild(closeBtn);
+  overlay.appendChild(wrap); overlay.appendChild(actions);
+  document.body.appendChild(overlay);
+  drawQR('preview-mcard-qr', 'MC|'+code, 160);
+}
+function adminMerchantCardsQrDataUrl(code, size){
+  size = size || 220;
+  var id = 'mqrtmp-'+Math.random().toString(36).slice(2);
+  var tmp = document.createElement('div');
+  tmp.id = id;
+  tmp.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+  document.body.appendChild(tmp);
+  drawQR(id, 'MC|'+code, size);
+  var canvas = tmp.querySelector('canvas');
+  var dataUrl = canvas ? canvas.toDataURL('image/png') : '';
+  document.body.removeChild(tmp);
+  return dataUrl;
+}
+function adminBuildPrintableMerchantCardsHtml(codes){
+  var baseUrl = location.href.replace(/[^/]*$/, '');
+  var cardsHtml = codes.map(function(code){
+    var qrDataUrl = adminMerchantCardsQrDataUrl(code, 340);
+    return '<div class="print-card">'
+      +'<div class="print-card-top-row">'
+      +'<div class="print-card-brand">'
+      +'<img src="'+baseUrl+'icon-512.png" class="print-card-icon" alt="ROM_MONEY">'
+      +'<div class="print-card-brandname">ROM_<span>MONEY</span></div>'
+      +'</div>'
+      +'<div class="print-card-code">'+code+'</div>'
+      +'</div>'
+      +'<div class="print-card-box">'+(qrDataUrl?'<img src="'+qrDataUrl+'" style="width:100%;height:100%;display:block">':'')+'</div>'
+      +'<div class="print-card-slogan">'+at('admin_mcards_slogan')+'</div>'
+      +'</div>';
+  }).join('');
+  return '<!doctype html><html><head><meta charset="utf-8"><title>'+at('admin_cards_print_tab_title')+'</title><style>'
+    +'*{box-sizing:border-box}body{margin:0;padding:6mm;background:#f4f4f4;font-family:Arial,sans-serif;display:flex;flex-wrap:wrap;gap:4mm;align-content:flex-start}'
+    +'.print-card{width:85.6mm;height:54mm;background-color:#0d4a30;'
+    +'background-image:repeating-linear-gradient(135deg,rgba(245,166,35,.08) 0 3mm,transparent 3mm 7mm),linear-gradient(155deg,#146b45 0%,#0d4a30 55%,#073321 100%);'
+    +'border:.4mm solid rgba(245,166,35,.5);border-radius:4mm;padding:2.5mm;display:grid;grid-template-rows:auto 1fr auto;align-items:center;'
+    +'page-break-inside:avoid;position:relative;overflow:hidden;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+    +'.print-card-top-row{display:flex;justify-content:space-between;align-items:center;width:100%;justify-self:stretch}'
+    +'.print-card-brand{display:flex;align-items:center;position:relative;padding-left:9mm}'
+    +'.print-card-icon{position:absolute;left:0;top:50%;transform:translateY(calc(-50% + 3mm));width:8mm;height:8mm;border-radius:2mm;object-fit:cover;flex-shrink:0;border:.3mm solid rgba(245,166,35,.4)}'
+    +'.print-card-brandname{color:#fff;font-size:6.5pt;font-weight:900;letter-spacing:.2pt}'
+    +'.print-card-brandname span{color:#F5A623}'
+    +'.print-card-box{background:#fff;border-radius:2mm;padding:1.3mm;width:36mm;height:36mm;box-sizing:border-box;border:.4mm solid rgba(245,166,35,.4);justify-self:center}'
+    +'.print-card-box img{display:block;width:100%;height:100%}'
+    +'.print-card-code{font-family:monospace;font-size:5.5pt;letter-spacing:.5pt;color:#fff;opacity:.9}'
+    +'.print-card-slogan{color:#fff;font-size:5pt;font-weight:700;letter-spacing:.5pt;text-align:center;text-transform:uppercase;opacity:.85}'
+    +'.print-toolbar{width:100%;margin-bottom:2mm;display:flex;gap:8px;align-items:center;flex-wrap:wrap}'
+    +'.print-toolbar button{padding:12px 20px;font-size:14px;font-weight:700;border:none;border-radius:8px;background:#0d4a30;color:#fff;cursor:pointer}'
+    +'.print-toolbar button#confirm-printed-btn{background:#F5A623}'
+    +'.print-toolbar button#confirm-printed-btn:disabled{background:#9a9a9a;cursor:default}'
+    +'.print-toolbar-note{width:100%;font-size:12px;color:#555}'
+    +'@media print{.print-toolbar{display:none}body{background:#fff;padding:0}}'
+    +'</style></head><body>'
+    +'<div class="print-toolbar">'
+    +'<button onclick="window.print()">'+at('admin_cards_print_tab_btn')+'</button>'
+    +'<button id="confirm-printed-btn" onclick="confirmMerchantCardsReallyPrinted()">'+at('admin_cards_confirm_printed_btn')+'</button>'
+    +'<div class="print-toolbar-note">'+at('admin_cards_confirm_printed_note')+'</div>'
+    +'</div>'
+    +cardsHtml
+    +'<scr'+'ipt>var _CARDS='+JSON.stringify(codes)+';function confirmMerchantCardsReallyPrinted(){'
+    +'if(window.opener&&window.opener.adminMarkMerchantCardsPrintedFromTab){window.opener.adminMarkMerchantCardsPrintedFromTab(_CARDS);}'
+    +'var b=document.getElementById(\'confirm-printed-btn\');b.disabled=true;b.textContent='+JSON.stringify(at('admin_cards_confirmed_printed_done'))+';'
+    +'}</scr'+'ipt>'
+    +'</body></html>';
+}
+function adminOpenMerchantCardPrintTab(codes){
+  if(!codes || !codes.length){ toast(at('admin_cards_err_count'), true); return; }
+  var html = adminBuildPrintableMerchantCardsHtml(codes);
+  var w = window.open('', '_blank');
+  if(!w){ toast(at('admin_print_popup_blocked'), true); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+function adminMarkMerchantCardsPrintedFromTab(codes){
+  apiCall('/admin?action=merchant-cards-mark-printed','POST',{admin_password:window._adminPw,card_codes:codes},'').then(function(){
+    adminClearMerchantCardsSelection();
+    adminLoadMerchantCards(1);
+  }).catch(function(){ toast(at('admin_dash_error_network'), true); });
+}
+function adminUnmarkMerchantCardPrinted(cardCode){
+  apiCall('/admin?action=merchant-cards-unmark-printed','POST',{admin_password:window._adminPw,card_codes:[cardCode]},'').then(function(res){
+    if(res&&res.success){ toast(at('admin_cards_unmarked_toast')); adminLoadMerchantCards(1); }
+    else { toast((res&&res.message)||at('admin_error_generic'), true); }
+  }).catch(function(){ toast(at('admin_dash_error_network'), true); });
+}
+function adminPrintMerchantCardsWithConfirm(codes){
+  var alreadyPrinted = codes.filter(function(code){
+    var c = window._mcardsListCache[code];
+    return c && c.printed_at;
+  });
+  if(alreadyPrinted.length){
+    var msg = codes.length===1
+      ? at('admin_cards_reprint_confirm_one').replace('{date}', new Date(window._mcardsListCache[codes[0]].printed_at).toLocaleDateString())
+      : at('admin_cards_reprint_confirm_many').replace('{n}', alreadyPrinted.length).replace('{total}', codes.length);
+    adminOpenConfirmModal({
+      icon:'🖨', title:at('admin_final_confirmation'), message:msg,
+      needsReason:false, confirmLabel:at('admin_cards_print_btn'), confirmColor:'var(--g)',
+      onConfirm:function(){ adminOpenMerchantCardPrintTab(codes); }
+    });
+  } else {
+    adminOpenMerchantCardPrintTab(codes);
+  }
+}
+function adminToggleMerchantCardSelect(code, checked){
+  if(checked) window._mcardsSelected.add(code); else window._mcardsSelected.delete(code);
+  adminRenderMerchantCardsSelectionToolbar();
+}
+function adminClearMerchantCardsSelection(){
+  window._mcardsSelected.clear();
+  adminRenderMerchantCardsSelectionToolbar();
+  var box=document.getElementById('mcards-list-box');
+  if(box) box.querySelectorAll('.mcards-select-cb').forEach(function(cb){ cb.checked=false; });
+}
+function adminRenderMerchantCardsSelectionToolbar(){
+  var el=document.getElementById('mcards-selection-toolbar');
+  if(!el) return;
+  var n=window._mcardsSelected.size;
+  if(!n){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='flex';
+  el.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;padding:10px 12px;background:var(--bg);border:1px solid var(--bord);border-radius:10px';
+  el.innerHTML='<span style="font-size:12px;font-weight:700">'+at('admin_cards_selected_count').replace('{n}',n)+'</span>'
+    +'<button class="btn-w" style="margin-bottom:0;width:auto;padding:8px 14px;font-size:11px" onclick="adminPrintMerchantCardsWithConfirm(Array.from(window._mcardsSelected))">'+at('admin_cards_print_selection_btn')+'</button>'
+    +'<button class="chip" style="padding:8px 14px;font-size:11px" onclick="adminClearMerchantCardsSelection()">'+at('admin_cards_clear_selection_btn')+'</button>';
+}
+function adminSyncMerchantCardsCheckboxes(){
+  document.querySelectorAll('.mcards-select-cb').forEach(function(cb){
+    cb.checked = window._mcardsSelected.has(cb.getAttribute('data-code'));
+  });
+}
+function adminQuickSelectUnprintedMerchant(){
+  var count=parseInt(document.getElementById('mcards-quickselect-count').value,10);
+  if(!count || count<1 || count>500){ toast(at('admin_cards_err_count'), true); return; }
+  apiCall('/admin?action=merchant-cards-select-unprinted','POST',{admin_password:window._adminPw,count:count},'').then(function(res){
+    if(res&&res.success&&res.data&&res.data.codes){
+      if(!res.data.codes.length){ toast(at('admin_cards_none_unprinted'), true); return; }
+      res.data.codes.forEach(function(code){ window._mcardsSelected.add(code); });
+      adminRenderMerchantCardsSelectionToolbar();
+      adminSyncMerchantCardsCheckboxes();
+      toast(at('admin_cards_quickselect_toast').replace('{n}',res.data.codes.length));
+    } else {
+      toast((res&&res.message)||at('admin_error_generic'), true);
+    }
+  }).catch(function(){ toast(at('admin_dash_error_network'), true); });
+}
+function adminFixOrphanedMerchantCards(){
+  apiCall('/admin?action=merchant-cards-fix-orphaned','POST',{admin_password:window._adminPw},'').then(function(res){
+    if(res&&res.success){
+      toast(at('admin_cards_fix_orphaned_toast').replace('{n}',(res.data&&res.data.fixed)||0));
+      adminLoadMerchantCards(1);
+    } else {
+      toast((res&&res.message)||at('admin_error_generic'), true);
+    }
+  }).catch(function(){ toast(at('admin_dash_error_network'), true); });
+}
+function adminMerchantCardsDateChanged(){ adminLoadMerchantCards(1); }
+function adminLoadMerchantCards(page){
+  adminDpRender('mcards','adminMerchantCardsDateChanged');
+  var box=document.getElementById('mcards-list-box');
+  var pag=document.getElementById('mcards-pagination');
+  if(!box) return;
+  box.innerHTML='<div class="admin-empty">'+at('admin_loading')+'</div>';
+  if(pag) pag.innerHTML='';
+  var payload={admin_password:window._adminPw, page:page||1, status:document.getElementById('mcards-status-filter').value};
+  var mcardsSearchVal=document.getElementById('mcards-search').value.trim();
+  if(mcardsSearchVal) payload.search=mcardsSearchVal;
+  var mcardsCountryVal=adminReadCountryFilter('mcards-country-box');
+  if(mcardsCountryVal) payload.country=mcardsCountryVal;
+  var mcardsDateRange=adminDpRange('mcards');
+  if(mcardsDateRange.from) payload.date_from=mcardsDateRange.from;
+  if(mcardsDateRange.to) payload.date_to=mcardsDateRange.to;
+  apiCall('/admin?action=merchant-cards-list','POST',payload,'').then(function(res){
+    if(res&&res.success&&res.data){
+      adminRenderCountryFilterOptions('mcards-country-box', 'mcards-country-row', res.data.available_countries||[], res.data.country_filter||null);
+      var cards=res.data.cards||[];
+      cards.forEach(function(c){ window._mcardsListCache[c.card_code]=c; });
+      adminRenderMerchantCardsSelectionToolbar();
+      var total=res.data.total||0, perPage=res.data.per_page||25, curPage=res.data.page||1;
+      var counts=res.data.counts||{unassigned:0,active:0,blocked:0};
+      var summaryEl=document.getElementById('mcards-counts-summary');
+      if(summaryEl){
+        var summaryPills=[
+          ['','admin_cards_pill_all',counts.unassigned+counts.active+counts.blocked,'var(--t2)'],
+          ['unassigned','admin_cards_status_unassigned',counts.unassigned,'var(--t3)'],
+          ['active','admin_cards_status_active',counts.active,'var(--g)'],
+          ['blocked','admin_cards_status_blocked',counts.blocked,'var(--re)']
+        ];
+        summaryEl.innerHTML=summaryPills.map(function(p){
+          var isActive=document.getElementById('mcards-status-filter').value===p[0];
+          return '<button onclick="document.getElementById(\'mcards-status-filter\').value=\''+p[0]+'\';adminLoadMerchantCards(1)" style="padding:6px 12px;border-radius:20px;border:1px solid '+p[3]+';background:'+(isActive?p[3]:'none')+';color:'+(isActive?'#fff':p[3])+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+at(p[1])+' : '+p[2]+'</button>';
+        }).join('');
+      }
+      if(cards.length===0){
+        box.innerHTML='<div class="admin-empty">'+at('admin_cards_none_found')+'</div>';
+        return;
+      }
+      var statusLabels={unassigned:at('admin_cards_badge_unassigned'), active:at('admin_cards_badge_active'), blocked:at('admin_cards_badge_blocked')};
+      var statusColors={unassigned:'var(--t3)', active:'var(--g)', blocked:'var(--re)'};
+      var html='';
+      cards.forEach(function(c){
+        var stColor=statusColors[c.status]||'var(--t3)';
+        var stLabel=statusLabels[c.status]||c.status;
+        var isSelected=window._mcardsSelected.has(c.card_code);
+        html+='<div class="admin-tx-card">'
+          +'<div style="display:flex;justify-content:space-between;align-items:center">'
+          +'<span style="display:flex;align-items:center;gap:8px"><input type="checkbox" class="mcards-select-cb" data-code="'+c.card_code+'" '+(isSelected?'checked':'')+' onchange="adminToggleMerchantCardSelect(\''+c.card_code+'\',this.checked)"><b style="font-family:monospace;font-size:13px">'+c.card_code+'</b></span>'
+          +'<span style="background:'+stColor+';color:#fff;font-weight:700;font-size:10px;padding:3px 9px;border-radius:10px">'+stLabel+'</span>'
+          +'</div>';
+        if(c.status!=='unassigned'){
+          html+='<div style="color:var(--t2);margin-top:4px">'+adminEsc(c.business_name||'-')+' · '+(c.phone_number||'-')+(c.country?' · '+adminEsc(adminCountryName(c.country)):'')+'</div>';
+        }
+        html+='<div style="color:var(--t3);margin-top:4px;font-size:11px">'+at('admin_cards_created_label')+' '+new Date(c.created_at).toLocaleDateString()+(c.activated_at?' · '+at('admin_cards_activated_label')+' '+new Date(c.activated_at).toLocaleDateString():'')+'</div>';
+        if(c.printed_at){
+          html+='<div style="color:var(--t3);margin-top:2px;font-size:11px">🖨 '+at('admin_cards_printed_on_label')+' '+new Date(c.printed_at).toLocaleDateString()+(c.print_count>1?' ('+at('admin_cards_printed_count_label').replace('{n}',c.print_count)+')':'')+' · <span style="text-decoration:underline;cursor:pointer" onclick="adminUnmarkMerchantCardPrinted(\''+c.card_code+'\')">'+at('admin_cards_unmark_printed_link')+'</span></div>';
+        }
+        if(c.status==='blocked' && c.blocked_at){
+          html+='<div style="color:var(--re);margin-top:6px;padding:8px 10px;background:var(--rl);border-radius:8px;font-size:11px">'
+            +at('admin_cards_blocked_on_label')+' '+new Date(c.blocked_at).toLocaleString()+'<br>'
+            +at('admin_cards_blocked_by_label')+' '+adminEsc(c.blocked_by_admin||'-')+'<br>'
+            +at('admin_cards_blocked_reason_label')+' '+adminEsc(c.blocked_reason||'-')
+            +'</div>';
+        }
+        html+='<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">';
+        html+='<button style="padding:6px 10px;background:var(--bord);color:var(--t1);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;font-size:10px" onclick="adminShowMerchantCardPreview(\''+c.card_code+'\')">'+at('admin_cards_preview_btn')+'</button>';
+        html+='<button style="padding:6px 10px;background:var(--gl);color:var(--g);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;font-size:10px" onclick="adminPrintMerchantCardsWithConfirm([\''+c.card_code+'\'])">'+at('admin_cards_print_btn')+'</button>';
+        if(c.status!=='blocked'){
+          html+='<button style="padding:6px 10px;background:var(--rl);color:var(--re);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;font-size:10px" onclick="adminBlockMerchantCard(\''+c.card_code+'\')">'+at('admin_cards_block_btn')+'</button>';
+        }
+        if(c.status==='active' && c.phone_number){
+          html+='<button style="padding:6px 10px;background:var(--bord);color:var(--t1);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;font-size:10px" onclick="adminReleaseMerchantCard(\''+c.card_code+'\')">'+at('admin_cards_release_btn')+'</button>';
+        }
+        if(c.status==='blocked'){
+          html+='<button style="padding:6px 10px;background:var(--gl);color:var(--g);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;font-size:10px" onclick="adminReactivateMerchantCard(\''+c.card_code+'\')">'+at('admin_cards_reactivate_btn')+'</button>';
+        }
+        html+='</div>';
+        html+='</div>';
+      });
+      box.innerHTML=html;
+      var totalPages=Math.max(1, Math.ceil(total/perPage));
+      if(pag){
+        pag.innerHTML='<button class="btn-w" style="margin-top:0;padding:8px 14px;width:auto" '+(curPage<=1?'disabled':'')+' onclick="adminLoadMerchantCards('+(curPage-1)+')">'+at('admin_users_prev_page')+'</button>'
+          +'<span style="color:var(--t3)">'+at('admin_users_page_of').replace('{p}',curPage).replace('{total}',totalPages).replace('{count}',total)+'</span>'
+          +'<button class="btn-w" style="margin-top:0;padding:8px 14px;width:auto" '+(curPage>=totalPages?'disabled':'')+' onclick="adminLoadMerchantCards('+(curPage+1)+')">'+at('admin_users_next_page')+'</button>';
+      }
+    } else {
+      box.innerHTML='<div class="admin-empty">'+((res&&res.message)||at('admin_dash_error_loading'))+'</div>';
+    }
+  }).catch(function(){ box.innerHTML='<div class="admin-empty">'+at('admin_dash_error_network')+'</div>'; });
+}
+function adminBlockMerchantCard(cardCode){
+  adminOpenConfirmModal({
+    icon:'🗑', title:at('admin_final_confirmation'), message:at('admin_cards_block_confirm_msg'),
+    needsReason:true, reasonOptions:[at('admin_cards_reason_lost'),at('admin_cards_reason_stolen'),at('admin_cards_reason_test')],
+    confirmLabel:at('admin_cards_block_btn'), confirmColor:'var(--re)',
+    onConfirm:function(reason){
+      apiCall('/admin?action=merchant-cards-block','POST',{admin_password:window._adminPw,card_code:cardCode,reason:reason},'').then(function(res){
+        if(res&&res.success){ toast(at('admin_cards_blocked_toast')); adminLoadMerchantCards(1); }
+        else { toast((res&&res.message)||at('admin_error_generic'), true); }
+      }).catch(function(){ toast(at('admin_dash_error_network'), true); });
+    }
+  });
+}
+function adminReleaseMerchantCard(cardCode){
+  adminOpenConfirmModal({
+    icon:'↩', title:at('admin_final_confirmation'), message:at('admin_cards_release_confirm_msg'),
+    needsReason:true, reasonOptions:[at('admin_cards_reason_test'),at('admin_cards_reason_wrong_attribution')],
+    confirmLabel:at('admin_cards_release_btn'), confirmColor:'var(--re)',
+    onConfirm:function(reason){
+      apiCall('/admin?action=merchant-cards-release','POST',{admin_password:window._adminPw,card_code:cardCode,reason:reason},'').then(function(res){
+        if(res&&res.success){ toast(at('admin_cards_released_toast')); adminLoadMerchantCards(1); }
+        else { toast((res&&res.message)||at('admin_error_generic'), true); }
+      }).catch(function(){ toast(at('admin_dash_error_network'), true); });
+    }
+  });
+}
+function adminReactivateMerchantCard(cardCode){
+  adminOpenConfirmModal({
+    icon:'✅', title:at('admin_final_confirmation'), message:at('admin_cards_reactivate_confirm_msg'),
+    needsReason:false, confirmLabel:at('admin_cards_reactivate_btn'), confirmColor:'var(--g)',
+    onConfirm:function(){
+      apiCall('/admin?action=merchant-cards-reactivate','POST',{admin_password:window._adminPw,card_code:cardCode},'').then(function(res){
+        if(res&&res.success){ toast(res.message||at('admin_cards_reactivated_toast')); adminLoadMerchantCards(1); }
         else { toast((res&&res.message)||at('admin_error_generic'), true); }
       }).catch(function(){ toast(at('admin_dash_error_network'), true); });
     }
@@ -10082,6 +10481,14 @@ function handleScannedQR(text){
     return;
   }
 
+  // Carte marchande imprimee ("MC|<code>", voir adminMerchantCardMarkup())
+  // - meme flux de paiement que le QR marchand, juste resolue via le code
+  // de la carte plutot que merchantId/qrSeed.
+  if(text.indexOf('MC|')===0){
+    handleScannedMerchantCard(text.slice(3));
+    return;
+  }
+
   // Parse phone from QR
   var phone = text.replace(/\s/g,'');
   if(text.indexOf('rommoney:') === 0){
@@ -10243,6 +10650,25 @@ function handleScannedMerchantQR(text){
     +'<div style="font-size:13px;color:var(--t2)">'+t('scan_identifying')+'</div></div>';
   var tok = getToken();
   apiCall('/wallet?action=resolve-merchant-qr&qr='+encodeURIComponent(text),'GET',null,tok).then(function(res){
+    if(res && res.success && res.data){
+      showMerchantPayForm(res.data.id, res.data.business_name, res.data.verified);
+    } else {
+      scV.innerHTML = '<div style="text-align:center;padding:30px"><div style="font-size:48px;margin-bottom:12px">⚠️</div>'
+        +'<div style="font-size:15px;font-weight:700;color:#e53e3e;margin-bottom:8px">'+t('scan_qr_invalid_title')+'</div>'
+        +'<button onclick="switchWalletTab(\'scan\')" style="margin-top:16px;width:100%;padding:12px;background:var(--gl);border:.5px solid var(--gm);border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;color:var(--accent-text);font-family:inherit">'+t('scan_btn_retry')+'</button></div>';
+    }
+  });
+}
+
+// ── PAIEMENT MARCHAND (carte imprimee scannee) ──
+function handleScannedMerchantCard(cardCode){
+  var scV = document.getElementById('wallet-scan-view');
+  if(!scV) return;
+  scV.innerHTML = '<div style="text-align:center;padding:30px">'
+    +'<div style="width:32px;height:32px;border:3px solid var(--gl);border-top-color:var(--g);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px"></div>'
+    +'<div style="font-size:13px;color:var(--t2)">'+t('scan_identifying')+'</div></div>';
+  var tok = getToken();
+  apiCall('/wallet?action=resolve-merchant-card&card_code='+encodeURIComponent(cardCode),'GET',null,tok).then(function(res){
     if(res && res.success && res.data){
       showMerchantPayForm(res.data.id, res.data.business_name, res.data.verified);
     } else {
