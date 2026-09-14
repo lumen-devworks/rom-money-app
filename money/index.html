@@ -386,7 +386,7 @@ html,body{height:100%;background:#085041;overflow:hidden;color:var(--t1)}
   color:#fff;
   -webkit-print-color-adjust:exact;print-color-adjust:exact;
 }
-.print-card::before{content:'';position:absolute;right:-6mm;bottom:-5mm;width:30mm;height:30mm;background:url('./icon-watermark.png') no-repeat center/contain;opacity:.15;pointer-events:none;z-index:0}
+.print-card::before{content:'';position:absolute;right:-6mm;bottom:-5mm;width:var(--wm-size,30mm);height:var(--wm-size,30mm);background:var(--wm-url,url('./icon-watermark.png')) no-repeat center/contain;opacity:.15;pointer-events:none;z-index:0}
 .print-card-top-row{display:flex;justify-content:space-between;align-items:center;width:100%;justify-self:stretch;position:relative;z-index:1}
 .print-card-brand{display:flex;align-items:center;position:relative;z-index:1;padding-left:9mm}
 .print-card-icon{position:absolute;left:0;top:50%;transform:translateY(calc(-50% + 3mm));width:8mm;height:8mm;border-radius:2mm;object-fit:cover;flex-shrink:0;border:.3mm solid rgba(245,166,35,.4)}
@@ -6250,7 +6250,12 @@ function adminReactivateCard(cardCode){
 // sinon impossible de voir a l'ecran qu'un autre format a ete selectionne.
 function adminMerchantCardMarkup(code, qrId, format){
   var fmt = (typeof MCARD_PRINT_FORMATS!=='undefined' && MCARD_PRINT_FORMATS[format]) || (typeof MCARD_PRINT_FORMATS!=='undefined' ? MCARD_PRINT_FORMATS.card : null);
-  var sizeStyle = fmt ? 'width:'+fmt.w+'mm;height:'+fmt.h+'mm;padding:'+fmt.pad+'mm;border-radius:'+fmt.radius+'mm' : '';
+  // Filigrane ROM_BUSINESS (pas ROM_MONEY, dont c'est le logo par defaut de
+  // .print-card::before) et mis a l'echelle du format - sinon il reste a sa
+  // taille fixe d'origine (30mm, pensee pour le format carte credit) meme
+  // sur une carte A5 bien plus grande, ou il devient visuellement minuscule.
+  var wmStyle = fmt ? "--wm-url:url('../business/icon-watermark.png');--wm-size:"+(fmt.w*.35)+'mm' : '';
+  var sizeStyle = fmt ? 'width:'+fmt.w+'mm;height:'+fmt.h+'mm;padding:'+fmt.pad+'mm;border-radius:'+fmt.radius+'mm;'+wmStyle : '';
   var brandPad = fmt ? 'padding-left:'+(fmt.icon+1)+'mm' : '';
   var iconStyle = fmt ? 'width:'+fmt.icon+'mm;height:'+fmt.icon+'mm;border-radius:'+(fmt.icon*.25)+'mm;transform:translateY(calc(-50% + '+(fmt.icon*.375)+'mm))' : '';
   var brandnameStyle = fmt ? 'font-size:'+fmt.brand+'pt' : '';
@@ -6297,11 +6302,17 @@ function adminGenerateMerchantCards(){
       // format encore absent du cache et retomberaient a tort sur 'card'.
       codes.forEach(function(code){ window._mcardsListCache[code]=window._mcardsListCache[code]||{}; window._mcardsListCache[code].print_format=genFormat; });
       var box=document.getElementById('mcards-gen-result');
+      // La largeur minimale de colonne doit suivre la largeur reelle du
+      // format genere - fixee a 90mm (pensee pour le format carte credit,
+      // 85.6mm), un A5 (148mm) deborde de sa colonne et chevauche la
+      // suivante puisque la grille ignore alors la vraie taille du contenu.
+      var genFmt = MCARD_PRINT_FORMATS[genFormat] || MCARD_PRINT_FORMATS.card;
+      var colMinWidth = Math.max(90, genFmt.w);
       box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
         +'<div style="font-size:11px;color:var(--t3)">'+at('admin_cards_generated_note').replace('{n}',codes.length)+' &middot; '+at('admin_mcards_format_badge_'+genFormat)+'</div>'
         +'<button class="btn-w" style="margin-bottom:0;width:auto;padding:8px 14px;font-size:11px" onclick="adminOpenMerchantCardPrintTab(window._lastGeneratedMerchantCards)">'+at('admin_cards_print_btn')+'</button>'
         +'</div>'
-        +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90mm,1fr));gap:10px" id="mcards-qr-grid"></div>';
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax('+colMinWidth+'mm,1fr));gap:10px" id="mcards-qr-grid"></div>';
       var grid=document.getElementById('mcards-qr-grid');
       grid.innerHTML=codes.map(function(code, idx){ return adminMerchantCardMarkup(code, 'mcard-qr-'+idx, genFormat); }).join('');
       codes.forEach(function(code, idx){ drawQR('mcard-qr-'+idx, 'MC|'+code, 160); });
@@ -6384,10 +6395,11 @@ function adminBuildPrintableMerchantCardsHtml(codes){
   // le dossier money/ (cette page y vit) ; businessIconUrl le fait pointer
   // vers le dossier voisin business/ a la place.
   var businessIconUrl = baseUrl.replace(/money\/?$/, 'business/') + 'icon-512.png';
+  var businessWatermarkUrl = baseUrl.replace(/money\/?$/, 'business/') + 'icon-watermark.png';
   var cardsHtml = codes.map(function(code){
     var fmt = MCARD_PRINT_FORMATS[adminMcardFormatOf(code)] || MCARD_PRINT_FORMATS.card;
     var qrDataUrl = adminMerchantCardsQrDataUrl(code, fmt.qrRes);
-    var sizeStyle = 'width:'+fmt.w+'mm;height:'+fmt.h+'mm;padding:'+fmt.pad+'mm;border-radius:'+fmt.radius+'mm';
+    var sizeStyle = 'width:'+fmt.w+'mm;height:'+fmt.h+'mm;padding:'+fmt.pad+'mm;border-radius:'+fmt.radius+'mm;--wm-size:'+(fmt.w*.35)+'mm';
     var brandStyle = 'padding-left:'+(fmt.icon+1)+'mm';
     var iconStyle = 'width:'+fmt.icon+'mm;height:'+fmt.icon+'mm;border-radius:'+(fmt.icon*.25)+'mm;transform:translateY(calc(-50% + '+(fmt.icon*.375)+'mm))';
     var brandnameStyle = 'font-size:'+fmt.brand+'pt';
@@ -6412,15 +6424,16 @@ function adminBuildPrintableMerchantCardsHtml(codes){
     +'background-image:repeating-linear-gradient(135deg,rgba(245,166,35,.08) 0 3mm,transparent 3mm 7mm),linear-gradient(155deg,#146b45 0%,#0d4a30 55%,#073321 100%);'
     +'border:.4mm solid rgba(245,166,35,.5);display:grid;grid-template-rows:auto 1fr auto;align-items:center;'
     +'page-break-inside:avoid;position:relative;overflow:hidden;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
-    +'.print-card-top-row{display:flex;justify-content:space-between;align-items:center;width:100%;justify-self:stretch}'
-    +'.print-card-brand{display:flex;align-items:center;position:relative}'
+    +'.print-card::before{content:\'\';position:absolute;right:-6mm;bottom:-5mm;width:var(--wm-size,30mm);height:var(--wm-size,30mm);background:url('+"'"+businessWatermarkUrl+"'"+') no-repeat center/contain;opacity:.15;pointer-events:none;z-index:0}'
+    +'.print-card-top-row{display:flex;justify-content:space-between;align-items:center;width:100%;justify-self:stretch;position:relative;z-index:1}'
+    +'.print-card-brand{display:flex;align-items:center;position:relative;z-index:1}'
     +'.print-card-icon{position:absolute;left:0;top:50%;object-fit:cover;flex-shrink:0;border:.3mm solid rgba(245,166,35,.4)}'
     +'.print-card-brandname{color:#fff;font-weight:900;letter-spacing:.2pt}'
     +'.print-card-brandname span{color:#F5A623}'
-    +'.print-card-box{background:#fff;border-radius:2mm;padding:1.3mm;box-sizing:border-box;border:.4mm solid rgba(245,166,35,.4);justify-self:center}'
+    +'.print-card-box{background:#fff;border-radius:2mm;padding:1.3mm;box-sizing:border-box;border:.4mm solid rgba(245,166,35,.4);justify-self:center;position:relative;z-index:1}'
     +'.print-card-box img{display:block;width:100%;height:100%}'
-    +'.print-card-code{font-family:monospace;letter-spacing:.5pt;color:#fff;opacity:.9}'
-    +'.print-card-slogan{color:#fff;font-weight:700;letter-spacing:.5pt;text-align:center;text-transform:uppercase;opacity:.85}'
+    +'.print-card-code{font-family:monospace;letter-spacing:.5pt;color:#fff;opacity:.9;position:relative;z-index:1}'
+    +'.print-card-slogan{color:#fff;font-weight:700;letter-spacing:.5pt;text-align:center;text-transform:uppercase;opacity:.85;position:relative;z-index:1}'
     +'.print-toolbar{width:100%;margin-bottom:2mm;display:flex;gap:8px;align-items:center;flex-wrap:wrap}'
     +'.print-toolbar button{padding:12px 20px;font-size:14px;font-weight:700;border:none;border-radius:8px;background:#0d4a30;color:#fff;cursor:pointer}'
     +'.print-toolbar button#confirm-printed-btn{background:#F5A623}'
