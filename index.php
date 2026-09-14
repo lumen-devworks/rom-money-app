@@ -9231,18 +9231,24 @@ function admin_generate_merchant_cards() {
     check_admin_password($b);
     $count = (int)($b['count'] ?? 0);
     if($count < 1 || $count > 500) fail('Le nombre de cartes doit etre entre 1 et 500');
+    // Le format est fixe des la generation, pas au moment de l'impression :
+    // une carte physique a une taille reelle unique (le support sur lequel
+    // le code est imprime), ce n'est pas un simple reglage d'affichage
+    // reutilisable a volonte.
+    $format = trim($b['format'] ?? 'card');
+    if(!in_array($format, ['card','a6','a5'], true)) $format = 'card';
     $codes = [];
     $inserted = 0;
     while($inserted < $count){
         $code = 'M'.strtoupper(bin2hex(random_bytes(5))); // prefixe M : distingue visuellement d'une carte personnelle
         $exists = q("SELECT 1 FROM merchant_physical_cards WHERE card_code=?",[$code])->fetch();
         if($exists) continue;
-        q("INSERT INTO merchant_physical_cards (id,card_code) VALUES (?,?)",[uid(),$code]);
+        q("INSERT INTO merchant_physical_cards (id,card_code,print_format) VALUES (?,?,?)",[uid(),$code,$format]);
         $codes[] = $code;
         $inserted++;
     }
-    admin_log('merchant_cards_generate','success',null,$count.' carte(s) marchande(s) generee(s)');
-    ok(['codes'=>$codes],$count.' carte(s) generee(s)');
+    admin_log('merchant_cards_generate','success',null,$count.' carte(s) marchande(s) generee(s) (format '.$format.')');
+    ok(['codes'=>$codes,'format'=>$format],$count.' carte(s) generee(s)');
 }
 
 function admin_list_merchant_cards() {
@@ -9275,16 +9281,20 @@ function admin_list_merchant_cards() {
     if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){
         $scopeWhere .= " AND mc.created_at::date <= ?"; $scopeParamsFinal[] = $dateTo;
     }
+    $format = trim($b['format'] ?? '');
     $where = $scopeWhere; $params = $scopeParamsFinal;
     if(in_array($status, ['unassigned','active','blocked'], true)){
         $where .= " AND mc.status=?"; $params[] = $status;
     } else {
         $where .= " AND mc.status != 'blocked'";
     }
+    if(in_array($format, ['card','a6','a5'], true)){
+        $where .= " AND mc.print_format=?"; $params[] = $format;
+    }
     $total = (int)q("SELECT COUNT(*) FROM merchant_physical_cards mc LEFT JOIN merchants m ON m.id=mc.merchant_id WHERE $where", $params)->fetchColumn();
     $rows = q("SELECT mc.id,mc.card_code,mc.status,mc.activated_at,mc.created_at,
                mc.blocked_at,mc.blocked_by_admin,mc.blocked_reason,
-               mc.printed_at,mc.print_count,
+               mc.printed_at,mc.print_count,mc.print_format,
                m.business_name,m.phone_number,m.country
                FROM merchant_physical_cards mc LEFT JOIN merchants m ON m.id=mc.merchant_id
                WHERE $where ORDER BY
@@ -10716,10 +10726,16 @@ function route_install() {
         blocked_reason VARCHAR(255),
         printed_at TIMESTAMP,
         print_count INT DEFAULT 0,
+        print_format VARCHAR(10) DEFAULT 'card',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )",
     "CREATE INDEX IF NOT EXISTS idx_merchant_physical_cards_code ON merchant_physical_cards(card_code)",
-    "CREATE INDEX IF NOT EXISTS idx_merchant_physical_cards_merchant ON merchant_physical_cards(merchant_id)"
+    "CREATE INDEX IF NOT EXISTS idx_merchant_physical_cards_merchant ON merchant_physical_cards(merchant_id)",
+    // Table deja en production sans cette colonne au moment de l'ajout du
+    // choix de format (carte/A6/A5) - necessaire pour que le format soit
+    // fixe des la generation (propriete physique du support imprime), pas
+    // juste un reglage volatile choisi a chaque impression.
+    "ALTER TABLE merchant_physical_cards ADD COLUMN IF NOT EXISTS print_format VARCHAR(10) DEFAULT 'card'"
     ];
 
     $created = [];

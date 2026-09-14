@@ -1264,12 +1264,13 @@ html,body{height:100%;background:#085041;overflow:hidden;color:var(--t1)}
     <div id="admin-panel-merchant-cards" class="admin-panel" style="display:none">
       <div class="admin-stitle" data-i18n-admin="admin_mcards_title">Cartes marchand</div>
       <div style="font-size:11px;color:var(--t3);margin-bottom:14px" data-i18n-admin="admin_mcards_desc">Cartes QR imprimables a poser sur le comptoir d'un marchand - les clients scannent pour payer, sans que le marchand ait besoin de sortir son telephone. Espace separe des cartes personnelles : un marchand active lui-meme sa carte depuis son propre compte ROM_BUSINESS, jamais via un agent.</div>
-      <div class="frow"><label class="flabel" data-i18n-admin="admin_mcards_format_label">Format d'impression</label>
+      <div class="frow"><label class="flabel" data-i18n-admin="admin_mcards_format_label">Format des cartes à générer</label>
         <select class="finput" id="mcards-print-format" style="margin-bottom:0">
           <option value="card" data-i18n-admin="admin_mcards_format_card">Carte (85,6 x 54 mm)</option>
           <option value="a6" data-i18n-admin="admin_mcards_format_a6">A6 (105 x 148 mm)</option>
           <option value="a5" data-i18n-admin="admin_mcards_format_a5">A5 (148 x 210 mm)</option>
         </select>
+        <div style="font-size:10px;color:var(--t3);margin-top:4px" data-i18n-admin="admin_mcards_format_hint">Le format est fixe a la generation (taille reelle du support imprime) - chaque carte generee ci-dessous aura ce format, visible ensuite dans la liste.</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
         <input class="finput" id="mcards-gen-count" type="number" inputmode="numeric" placeholder="Nombre de cartes" style="margin-bottom:0" value="10">
@@ -1294,6 +1295,12 @@ html,body{height:100%;background:#085041;overflow:hidden;color:var(--t1)}
         <option value="unassigned" data-i18n-admin="admin_cards_status_unassigned">Non activées</option>
         <option value="active" data-i18n-admin="admin_cards_status_active">Actives</option>
         <option value="blocked" data-i18n-admin="admin_cards_status_blocked">Bloquées</option>
+      </select>
+      <select class="finput" id="mcards-format-filter" onchange="adminLoadMerchantCards(1)" style="margin-bottom:12px">
+        <option value="" data-i18n-admin="admin_mcards_format_filter_all">Format : Tous</option>
+        <option value="card" data-i18n-admin="admin_mcards_format_badge_card">Carte</option>
+        <option value="a6" data-i18n-admin="admin_mcards_format_badge_a6">A6</option>
+        <option value="a5" data-i18n-admin="admin_mcards_format_badge_a5">A5</option>
       </select>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
         <input class="finput" id="mcards-quickselect-count" type="number" inputmode="numeric" style="margin-bottom:0;width:90px">
@@ -1944,10 +1951,15 @@ var I18N = {
   admin_mcards_block_all_btn: {fr:'Bloquer toutes ses cartes', en:'Block all their cards'},
   admin_mcards_block_all_confirm_msg: {fr:'Toutes les cartes actives de ce marchand seront bloquees, pas seulement celle-ci. A utiliser si le compte entier semble compromis.', en:'All of this merchant\'s active cards will be blocked, not just this one. Use this if the whole account seems compromised.'},
   admin_mcards_all_blocked_toast: {fr:'{n} carte(s) bloquee(s)', en:'{n} card(s) blocked'},
-  admin_mcards_format_label: {fr:'Format d\'impression', en:'Print format'},
+  admin_mcards_format_label: {fr:'Format des cartes à générer', en:'Format of cards to generate'},
+  admin_mcards_format_hint: {fr:'Le format est fixé à la génération (taille réelle du support imprimé) - chaque carte générée ci-dessous aura ce format, visible ensuite dans la liste.', en:'The format is set at generation time (real size of the printed medium) - every card generated below will have this format, shown afterwards in the list.'},
   admin_mcards_format_card: {fr:'Carte (85,6 x 54 mm)', en:'Card (85.6 x 54 mm)'},
   admin_mcards_format_a6: {fr:'A6 (105 x 148 mm)', en:'A6 (105 x 148 mm)'},
   admin_mcards_format_a5: {fr:'A5 (148 x 210 mm)', en:'A5 (148 x 210 mm)'},
+  admin_mcards_format_filter_all: {fr:'Format : Tous', en:'Format: All'},
+  admin_mcards_format_badge_card: {fr:'Carte', en:'Card'},
+  admin_mcards_format_badge_a6: {fr:'A6', en:'A6'},
+  admin_mcards_format_badge_a5: {fr:'A5', en:'A5'},
   admin_mrc_cards_title: {fr:'Cartes marchandes actives ({n})', en:'Active merchant cards ({n})'},
   admin_mrc_cards_none: {fr:'Aucune carte active', en:'No active cards'},
   admin_mrc_cards_view_link: {fr:'Voir dans "Cartes marchand"', en:'View in "Merchant cards"'},
@@ -6259,25 +6271,39 @@ function adminMerchantCardMarkup(code, qrId, format){
 }
 window._mcardsListCache = window._mcardsListCache || {};
 window._mcardsSelected = window._mcardsSelected || new Set();
+// Format reellement fixe sur la carte (renvoye par la liste admin) - jamais
+// le selecteur de generation, qui ne reflete que le prochain lot a produire
+// et peut avoir change entre-temps. 'card' par defaut pour les cartes
+// generees avant l'introduction de ce champ (print_format NULL cote DB).
+function adminMcardFormatOf(code){
+  var c = window._mcardsListCache[code];
+  return (c && c.print_format) || 'card';
+}
 
 function adminGenerateMerchantCards(){
   var count=parseInt(document.getElementById('mcards-gen-count').value,10);
   if(!count || count<1 || count>500){ toast(at('admin_cards_err_count'), true); return; }
+  var format=document.getElementById('mcards-print-format').value;
   var btn=document.getElementById('admin-mcards-generate-btn');
   if(btn) btn.disabled=true;
-  apiCall('/admin?action=merchant-cards-generate','POST',{admin_password:window._adminPw,count:count},'').then(function(res){
+  apiCall('/admin?action=merchant-cards-generate','POST',{admin_password:window._adminPw,count:count,format:format},'').then(function(res){
     if(btn) btn.disabled=false;
     if(res&&res.success&&res.data&&res.data.codes){
       var codes=res.data.codes;
+      var genFormat=res.data.format||format;
       window._lastGeneratedMerchantCards=codes;
+      // Pre-remplit le cache avant meme le rechargement de la liste (async) -
+      // sans ca, l'apercu/impression immediats depuis ce resultat liraient un
+      // format encore absent du cache et retomberaient a tort sur 'card'.
+      codes.forEach(function(code){ window._mcardsListCache[code]=window._mcardsListCache[code]||{}; window._mcardsListCache[code].print_format=genFormat; });
       var box=document.getElementById('mcards-gen-result');
       box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
-        +'<div style="font-size:11px;color:var(--t3)">'+at('admin_cards_generated_note').replace('{n}',codes.length)+'</div>'
+        +'<div style="font-size:11px;color:var(--t3)">'+at('admin_cards_generated_note').replace('{n}',codes.length)+' &middot; '+at('admin_mcards_format_badge_'+genFormat)+'</div>'
         +'<button class="btn-w" style="margin-bottom:0;width:auto;padding:8px 14px;font-size:11px" onclick="adminOpenMerchantCardPrintTab(window._lastGeneratedMerchantCards)">'+at('admin_cards_print_btn')+'</button>'
         +'</div>'
         +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90mm,1fr));gap:10px" id="mcards-qr-grid"></div>';
       var grid=document.getElementById('mcards-qr-grid');
-      grid.innerHTML=codes.map(function(code, idx){ return adminMerchantCardMarkup(code, 'mcard-qr-'+idx); }).join('');
+      grid.innerHTML=codes.map(function(code, idx){ return adminMerchantCardMarkup(code, 'mcard-qr-'+idx, genFormat); }).join('');
       codes.forEach(function(code, idx){ drawQR('mcard-qr-'+idx, 'MC|'+code, 160); });
       adminLoadMerchantCards(1);
     } else {
@@ -6286,8 +6312,7 @@ function adminGenerateMerchantCards(){
   }).catch(function(){ if(btn) btn.disabled=false; toast(at('admin_dash_error_network'), true); });
 }
 function adminShowMerchantCardPreview(code){
-  var formatEl=document.getElementById('mcards-print-format');
-  var format=formatEl?formatEl.value:'card';
+  var format=adminMcardFormatOf(code);
   var fmt=MCARD_PRINT_FORMATS[format]||MCARD_PRINT_FORMATS.card;
   var overlay=document.createElement('div');
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px';
@@ -6344,8 +6369,14 @@ var MCARD_PRINT_FORMATS = {
   a6:{w:105,h:148,pad:8,icon:16,brand:12,code:9,slogan:8,qrBox:72,qrRes:520,radius:6},
   a5:{w:148,h:210,pad:12,icon:22,brand:17,code:12,slogan:11,qrBox:104,qrRes:680,radius:8}
 };
-function adminBuildPrintableMerchantCardsHtml(codes, format){
-  var fmt = MCARD_PRINT_FORMATS[format] || MCARD_PRINT_FORMATS.card;
+// Chaque code garde son PROPRE format (celui fixe a sa generation, voir
+// adminMcardFormatOf) plutot qu'un format unique impose a tout le lot - une
+// selection multiple peut melanger des cartes Carte/A6/A5 (imprimees a des
+// moments differents) et chacune doit sortir a sa vraie taille. D'ou des
+// tailles injectees en style inline par carte, la feuille de style commune
+// ne portant plus que les regles independantes du format (couleurs, degrade,
+// disposition).
+function adminBuildPrintableMerchantCardsHtml(codes){
   var baseUrl = location.href.replace(/[^/]*$/, '');
   // La carte represente un compte ROM_BUSINESS (marchand) - meme si c'est
   // l'app ROM_MONEY qui la scanne cote client, le logo affiche doit etre
@@ -6354,34 +6385,42 @@ function adminBuildPrintableMerchantCardsHtml(codes, format){
   // vers le dossier voisin business/ a la place.
   var businessIconUrl = baseUrl.replace(/money\/?$/, 'business/') + 'icon-512.png';
   var cardsHtml = codes.map(function(code){
+    var fmt = MCARD_PRINT_FORMATS[adminMcardFormatOf(code)] || MCARD_PRINT_FORMATS.card;
     var qrDataUrl = adminMerchantCardsQrDataUrl(code, fmt.qrRes);
-    return '<div class="print-card">'
+    var sizeStyle = 'width:'+fmt.w+'mm;height:'+fmt.h+'mm;padding:'+fmt.pad+'mm;border-radius:'+fmt.radius+'mm';
+    var brandStyle = 'padding-left:'+(fmt.icon+1)+'mm';
+    var iconStyle = 'width:'+fmt.icon+'mm;height:'+fmt.icon+'mm;border-radius:'+(fmt.icon*.25)+'mm;transform:translateY(calc(-50% + '+(fmt.icon*.375)+'mm))';
+    var brandnameStyle = 'font-size:'+fmt.brand+'pt';
+    var codeStyle = 'font-size:'+fmt.code+'pt';
+    var boxStyle = 'width:'+fmt.qrBox+'mm;height:'+fmt.qrBox+'mm';
+    var sloganStyle = 'font-size:'+fmt.slogan+'pt';
+    return '<div class="print-card" style="'+sizeStyle+'">'
       +'<div class="print-card-top-row">'
-      +'<div class="print-card-brand">'
-      +'<img src="'+businessIconUrl+'" class="print-card-icon" alt="ROM_BUSINESS">'
-      +'<div class="print-card-brandname">ROM_<span>BUSINESS</span></div>'
+      +'<div class="print-card-brand" style="'+brandStyle+'">'
+      +'<img src="'+businessIconUrl+'" class="print-card-icon" alt="ROM_BUSINESS" style="'+iconStyle+'">'
+      +'<div class="print-card-brandname" style="'+brandnameStyle+'">ROM_<span>BUSINESS</span></div>'
       +'</div>'
-      +'<div class="print-card-code">'+code+'</div>'
+      +'<div class="print-card-code" style="'+codeStyle+'">'+code+'</div>'
       +'</div>'
-      +'<div class="print-card-box">'+(qrDataUrl?'<img src="'+qrDataUrl+'" style="width:100%;height:100%;display:block">':'')+'</div>'
-      +'<div class="print-card-slogan">'+at('admin_mcards_slogan')+'</div>'
+      +'<div class="print-card-box" style="'+boxStyle+'">'+(qrDataUrl?'<img src="'+qrDataUrl+'" style="width:100%;height:100%;display:block">':'')+'</div>'
+      +'<div class="print-card-slogan" style="'+sloganStyle+'">'+at('admin_mcards_slogan')+'</div>'
       +'</div>';
   }).join('');
   return '<!doctype html><html><head><meta charset="utf-8"><title>'+at('admin_cards_print_tab_title')+'</title><style>'
     +'*{box-sizing:border-box}body{margin:0;padding:6mm;background:#f4f4f4;font-family:Arial,sans-serif;display:flex;flex-wrap:wrap;gap:4mm;align-content:flex-start}'
-    +'.print-card{width:'+fmt.w+'mm;height:'+fmt.h+'mm;background-color:#0d4a30;'
+    +'.print-card{background-color:#0d4a30;'
     +'background-image:repeating-linear-gradient(135deg,rgba(245,166,35,.08) 0 3mm,transparent 3mm 7mm),linear-gradient(155deg,#146b45 0%,#0d4a30 55%,#073321 100%);'
-    +'border:.4mm solid rgba(245,166,35,.5);border-radius:'+fmt.radius+'mm;padding:'+fmt.pad+'mm;display:grid;grid-template-rows:auto 1fr auto;align-items:center;'
+    +'border:.4mm solid rgba(245,166,35,.5);display:grid;grid-template-rows:auto 1fr auto;align-items:center;'
     +'page-break-inside:avoid;position:relative;overflow:hidden;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
     +'.print-card-top-row{display:flex;justify-content:space-between;align-items:center;width:100%;justify-self:stretch}'
-    +'.print-card-brand{display:flex;align-items:center;position:relative;padding-left:'+(fmt.icon+1)+'mm}'
-    +'.print-card-icon{position:absolute;left:0;top:50%;transform:translateY(calc(-50% + '+(fmt.icon*.375)+'mm));width:'+fmt.icon+'mm;height:'+fmt.icon+'mm;border-radius:'+(fmt.icon*.25)+'mm;object-fit:cover;flex-shrink:0;border:.3mm solid rgba(245,166,35,.4)}'
-    +'.print-card-brandname{color:#fff;font-size:'+fmt.brand+'pt;font-weight:900;letter-spacing:.2pt}'
+    +'.print-card-brand{display:flex;align-items:center;position:relative}'
+    +'.print-card-icon{position:absolute;left:0;top:50%;object-fit:cover;flex-shrink:0;border:.3mm solid rgba(245,166,35,.4)}'
+    +'.print-card-brandname{color:#fff;font-weight:900;letter-spacing:.2pt}'
     +'.print-card-brandname span{color:#F5A623}'
-    +'.print-card-box{background:#fff;border-radius:2mm;padding:1.3mm;width:'+fmt.qrBox+'mm;height:'+fmt.qrBox+'mm;box-sizing:border-box;border:.4mm solid rgba(245,166,35,.4);justify-self:center}'
+    +'.print-card-box{background:#fff;border-radius:2mm;padding:1.3mm;box-sizing:border-box;border:.4mm solid rgba(245,166,35,.4);justify-self:center}'
     +'.print-card-box img{display:block;width:100%;height:100%}'
-    +'.print-card-code{font-family:monospace;font-size:'+fmt.code+'pt;letter-spacing:.5pt;color:#fff;opacity:.9}'
-    +'.print-card-slogan{color:#fff;font-size:'+fmt.slogan+'pt;font-weight:700;letter-spacing:.5pt;text-align:center;text-transform:uppercase;opacity:.85}'
+    +'.print-card-code{font-family:monospace;letter-spacing:.5pt;color:#fff;opacity:.9}'
+    +'.print-card-slogan{color:#fff;font-weight:700;letter-spacing:.5pt;text-align:center;text-transform:uppercase;opacity:.85}'
     +'.print-toolbar{width:100%;margin-bottom:2mm;display:flex;gap:8px;align-items:center;flex-wrap:wrap}'
     +'.print-toolbar button{padding:12px 20px;font-size:14px;font-weight:700;border:none;border-radius:8px;background:#0d4a30;color:#fff;cursor:pointer}'
     +'.print-toolbar button#confirm-printed-btn{background:#F5A623}'
@@ -6403,9 +6442,7 @@ function adminBuildPrintableMerchantCardsHtml(codes, format){
 }
 function adminOpenMerchantCardPrintTab(codes){
   if(!codes || !codes.length){ toast(at('admin_cards_err_count'), true); return; }
-  var formatEl = document.getElementById('mcards-print-format');
-  var format = formatEl ? formatEl.value : 'card';
-  var html = adminBuildPrintableMerchantCardsHtml(codes, format);
+  var html = adminBuildPrintableMerchantCardsHtml(codes);
   var w = window.open('', '_blank');
   if(!w){ toast(at('admin_print_popup_blocked'), true); return; }
   w.document.open(); w.document.write(html); w.document.close();
@@ -6505,7 +6542,7 @@ function adminLoadMerchantCards(page){
   if(!box) return;
   box.innerHTML='<div class="admin-empty">'+at('admin_loading')+'</div>';
   if(pag) pag.innerHTML='';
-  var payload={admin_password:window._adminPw, page:page||1, status:document.getElementById('mcards-status-filter').value};
+  var payload={admin_password:window._adminPw, page:page||1, status:document.getElementById('mcards-status-filter').value, format:document.getElementById('mcards-format-filter').value};
   var mcardsSearchVal=document.getElementById('mcards-search').value.trim();
   if(mcardsSearchVal) payload.search=mcardsSearchVal;
   var mcardsCountryVal=adminReadCountryFilter('mcards-country-box');
@@ -6545,10 +6582,15 @@ function adminLoadMerchantCards(page){
         var stColor=statusColors[c.status]||'var(--t3)';
         var stLabel=statusLabels[c.status]||c.status;
         var isSelected=window._mcardsSelected.has(c.card_code);
+        var fmtCode=c.print_format||'card';
+        var fmtLabel=at('admin_mcards_format_badge_'+fmtCode);
         html+='<div class="admin-tx-card">'
           +'<div style="display:flex;justify-content:space-between;align-items:center">'
           +'<span style="display:flex;align-items:center;gap:8px"><input type="checkbox" class="mcards-select-cb" data-code="'+c.card_code+'" '+(isSelected?'checked':'')+' onchange="adminToggleMerchantCardSelect(\''+c.card_code+'\',this.checked)"><b style="font-family:monospace;font-size:13px">'+c.card_code+'</b></span>'
+          +'<span style="display:flex;align-items:center;gap:6px">'
+          +'<span style="background:var(--gold);color:#fff;font-weight:700;font-size:9px;padding:3px 8px;border-radius:10px" title="'+adminEsc(at('admin_mcards_format_'+fmtCode))+'">'+fmtLabel+'</span>'
           +'<span style="background:'+stColor+';color:#fff;font-weight:700;font-size:10px;padding:3px 9px;border-radius:10px">'+stLabel+'</span>'
+          +'</span>'
           +'</div>';
         if(c.status!=='unassigned'){
           html+='<div style="color:var(--t2);margin-top:4px">'+adminEsc(c.business_name||'-')+' · '+(c.phone_number||'-')+(c.country?' · '+adminEsc(adminCountryName(c.country)):'')+'</div>';
