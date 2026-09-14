@@ -1259,6 +1259,13 @@ html,body{height:100%;background:#085041;overflow:hidden;color:var(--t1)}
     <div id="admin-panel-merchant-cards" class="admin-panel" style="display:none">
       <div class="admin-stitle" data-i18n-admin="admin_mcards_title">Cartes marchand</div>
       <div style="font-size:11px;color:var(--t3);margin-bottom:14px" data-i18n-admin="admin_mcards_desc">Cartes QR imprimables a poser sur le comptoir d'un marchand - les clients scannent pour payer, sans que le marchand ait besoin de sortir son telephone. Espace separe des cartes personnelles : un marchand active lui-meme sa carte depuis son propre compte ROM_BUSINESS, jamais via un agent.</div>
+      <div class="frow"><label class="flabel" data-i18n-admin="admin_mcards_format_label">Format d'impression</label>
+        <select class="finput" id="mcards-print-format" style="margin-bottom:0">
+          <option value="card" data-i18n-admin="admin_mcards_format_card">Carte (85,6 x 54 mm)</option>
+          <option value="a6" data-i18n-admin="admin_mcards_format_a6">A6 (105 x 148 mm)</option>
+          <option value="a5" data-i18n-admin="admin_mcards_format_a5">A5 (148 x 210 mm)</option>
+        </select>
+      </div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
         <input class="finput" id="mcards-gen-count" type="number" inputmode="numeric" placeholder="Nombre de cartes" style="margin-bottom:0" value="10">
         <button class="btn-w" id="admin-mcards-generate-btn" style="margin-bottom:0;width:auto;padding:11px 16px" onclick="adminGenerateMerchantCards()" data-i18n-admin="admin_cards_generate_btn">Générer</button>
@@ -1929,6 +1936,16 @@ var I18N = {
   admin_mcards_reissue_hint: {fr:'Carte perdue/volée : bloquez-la ci-dessous. Le marchand active lui-même une nouvelle carte du stock existant, directement depuis son compte ROM_BUSINESS.', en:"Lost/stolen card: block it below. The merchant activates a new card from existing stock themselves, directly from their ROM_BUSINESS account."},
   admin_mcards_search_label: {fr:'Rechercher (numéro, nom du commerce ou code carte)', en:'Search (phone, business name or card code)'},
   admin_mcards_slogan: {fr:'UNE AFRIQUE, UN PORTEFEUILLE', en:'ONE AFRICA, ONE WALLET'},
+  admin_mcards_block_all_btn: {fr:'Bloquer toutes ses cartes', en:'Block all their cards'},
+  admin_mcards_block_all_confirm_msg: {fr:'Toutes les cartes actives de ce marchand seront bloquees, pas seulement celle-ci. A utiliser si le compte entier semble compromis.', en:'All of this merchant\'s active cards will be blocked, not just this one. Use this if the whole account seems compromised.'},
+  admin_mcards_all_blocked_toast: {fr:'{n} carte(s) bloquee(s)', en:'{n} card(s) blocked'},
+  admin_mcards_format_label: {fr:'Format d\'impression', en:'Print format'},
+  admin_mcards_format_card: {fr:'Carte (85,6 x 54 mm)', en:'Card (85.6 x 54 mm)'},
+  admin_mcards_format_a6: {fr:'A6 (105 x 148 mm)', en:'A6 (105 x 148 mm)'},
+  admin_mcards_format_a5: {fr:'A5 (148 x 210 mm)', en:'A5 (148 x 210 mm)'},
+  admin_mrc_cards_title: {fr:'Cartes marchandes actives ({n})', en:'Active merchant cards ({n})'},
+  admin_mrc_cards_none: {fr:'Aucune carte active', en:'No active cards'},
+  admin_mrc_cards_view_link: {fr:'Voir dans "Cartes marchand"', en:'View in "Merchant cards"'},
   admin_cards_max_note: {fr:'Maximum 500 cartes par lot.', en:'Maximum 500 cards per batch.'},
   admin_cards_list_title: {fr:'Toutes les cartes', en:'All cards'},
   admin_cards_reissue_hint: {fr:"Carte perdue/volée : bloquez-la ci-dessous. Le client n'a rien de plus à faire côté admin — chez n'importe quel agent, il active une carte vierge du stock existant avec son numéro de téléphone habituel (depuis ROM_GUICHET), ce qui relie la nouvelle carte à son compte déjà existant.", en:"Lost/stolen card: block it below. Nothing else is needed on the admin side — at any agent, the customer activates a blank card from existing stock with their usual phone number (from ROM_GUICHET), which links the new card to their existing account."},
@@ -4761,6 +4778,21 @@ function adminSearchMerchant(){
                 +'</div>';
             }).join(''));
 
+      // ── Cartes marchandes physiques actives (un marchand peut en avoir
+      // plusieurs, voir MERCHANT_CARDS_MAX_ACTIVE cote backend) ──
+      var mCards = m.physical_cards||[];
+      html += '<div class="admin-stitle" style="margin-top:20px;border-top:1px solid var(--bord);padding-top:16px">'+at('admin_mrc_cards_title').replace('{n}',mCards.length)+'</div>';
+      if(mCards.length===0){
+        html += '<div class="admin-empty">'+at('admin_mrc_cards_none')+'</div>';
+      } else {
+        html += mCards.map(function(c){
+          return '<div style="padding:6px 0;border-top:1px solid var(--bord);display:flex;justify-content:space-between;align-items:center;font-size:12px">'
+            +'<span><b style="font-family:monospace">'+adminEsc(c.card_code)+'</b> · '+new Date(c.activated_at).toLocaleDateString()+'</span>'
+            +'<span style="text-decoration:underline;cursor:pointer;color:var(--accent-text);white-space:nowrap;margin-left:8px" onclick="adminJumpToMerchantCard(\''+c.card_code+'\')">'+at('admin_mrc_cards_view_link')+'</span>'
+            +'</div>';
+        }).join('');
+      }
+
       // ── Notes admin (contexte libre) ──
       var mNotes = m.notes||[];
       window._adminMerchantNoteId = m.id;
@@ -6267,10 +6299,22 @@ function adminMerchantCardsQrDataUrl(code, size){
   document.body.removeChild(tmp);
   return dataUrl;
 }
-function adminBuildPrintableMerchantCardsHtml(codes){
+// Trois formats disponibles (voir selecteur #mcards-print-format) : le
+// format carte credit standard d'origine, plus A6/A5 pour les grandes
+// surfaces qui ont besoin d'un support plus visible sur un long comptoir.
+// Toutes les dimensions/tailles de police sont deduites de cette table -
+// qrRes (resolution du QR en pixels) grimpe avec la taille imprimee pour que
+// le code reste net et scannable, pas flou.
+var MCARD_PRINT_FORMATS = {
+  card:{w:85.6,h:54,pad:2.5,icon:8,brand:6.5,code:5.5,slogan:5,qrBox:36,qrRes:340,radius:4},
+  a6:{w:105,h:148,pad:8,icon:16,brand:12,code:9,slogan:8,qrBox:72,qrRes:520,radius:6},
+  a5:{w:148,h:210,pad:12,icon:22,brand:17,code:12,slogan:11,qrBox:104,qrRes:680,radius:8}
+};
+function adminBuildPrintableMerchantCardsHtml(codes, format){
+  var fmt = MCARD_PRINT_FORMATS[format] || MCARD_PRINT_FORMATS.card;
   var baseUrl = location.href.replace(/[^/]*$/, '');
   var cardsHtml = codes.map(function(code){
-    var qrDataUrl = adminMerchantCardsQrDataUrl(code, 340);
+    var qrDataUrl = adminMerchantCardsQrDataUrl(code, fmt.qrRes);
     return '<div class="print-card">'
       +'<div class="print-card-top-row">'
       +'<div class="print-card-brand">'
@@ -6285,19 +6329,19 @@ function adminBuildPrintableMerchantCardsHtml(codes){
   }).join('');
   return '<!doctype html><html><head><meta charset="utf-8"><title>'+at('admin_cards_print_tab_title')+'</title><style>'
     +'*{box-sizing:border-box}body{margin:0;padding:6mm;background:#f4f4f4;font-family:Arial,sans-serif;display:flex;flex-wrap:wrap;gap:4mm;align-content:flex-start}'
-    +'.print-card{width:85.6mm;height:54mm;background-color:#0d4a30;'
+    +'.print-card{width:'+fmt.w+'mm;height:'+fmt.h+'mm;background-color:#0d4a30;'
     +'background-image:repeating-linear-gradient(135deg,rgba(245,166,35,.08) 0 3mm,transparent 3mm 7mm),linear-gradient(155deg,#146b45 0%,#0d4a30 55%,#073321 100%);'
-    +'border:.4mm solid rgba(245,166,35,.5);border-radius:4mm;padding:2.5mm;display:grid;grid-template-rows:auto 1fr auto;align-items:center;'
+    +'border:.4mm solid rgba(245,166,35,.5);border-radius:'+fmt.radius+'mm;padding:'+fmt.pad+'mm;display:grid;grid-template-rows:auto 1fr auto;align-items:center;'
     +'page-break-inside:avoid;position:relative;overflow:hidden;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
     +'.print-card-top-row{display:flex;justify-content:space-between;align-items:center;width:100%;justify-self:stretch}'
-    +'.print-card-brand{display:flex;align-items:center;position:relative;padding-left:9mm}'
-    +'.print-card-icon{position:absolute;left:0;top:50%;transform:translateY(calc(-50% + 3mm));width:8mm;height:8mm;border-radius:2mm;object-fit:cover;flex-shrink:0;border:.3mm solid rgba(245,166,35,.4)}'
-    +'.print-card-brandname{color:#fff;font-size:6.5pt;font-weight:900;letter-spacing:.2pt}'
+    +'.print-card-brand{display:flex;align-items:center;position:relative;padding-left:'+(fmt.icon+1)+'mm}'
+    +'.print-card-icon{position:absolute;left:0;top:50%;transform:translateY(calc(-50% + '+(fmt.icon*.375)+'mm));width:'+fmt.icon+'mm;height:'+fmt.icon+'mm;border-radius:'+(fmt.icon*.25)+'mm;object-fit:cover;flex-shrink:0;border:.3mm solid rgba(245,166,35,.4)}'
+    +'.print-card-brandname{color:#fff;font-size:'+fmt.brand+'pt;font-weight:900;letter-spacing:.2pt}'
     +'.print-card-brandname span{color:#F5A623}'
-    +'.print-card-box{background:#fff;border-radius:2mm;padding:1.3mm;width:36mm;height:36mm;box-sizing:border-box;border:.4mm solid rgba(245,166,35,.4);justify-self:center}'
+    +'.print-card-box{background:#fff;border-radius:2mm;padding:1.3mm;width:'+fmt.qrBox+'mm;height:'+fmt.qrBox+'mm;box-sizing:border-box;border:.4mm solid rgba(245,166,35,.4);justify-self:center}'
     +'.print-card-box img{display:block;width:100%;height:100%}'
-    +'.print-card-code{font-family:monospace;font-size:5.5pt;letter-spacing:.5pt;color:#fff;opacity:.9}'
-    +'.print-card-slogan{color:#fff;font-size:5pt;font-weight:700;letter-spacing:.5pt;text-align:center;text-transform:uppercase;opacity:.85}'
+    +'.print-card-code{font-family:monospace;font-size:'+fmt.code+'pt;letter-spacing:.5pt;color:#fff;opacity:.9}'
+    +'.print-card-slogan{color:#fff;font-size:'+fmt.slogan+'pt;font-weight:700;letter-spacing:.5pt;text-align:center;text-transform:uppercase;opacity:.85}'
     +'.print-toolbar{width:100%;margin-bottom:2mm;display:flex;gap:8px;align-items:center;flex-wrap:wrap}'
     +'.print-toolbar button{padding:12px 20px;font-size:14px;font-weight:700;border:none;border-radius:8px;background:#0d4a30;color:#fff;cursor:pointer}'
     +'.print-toolbar button#confirm-printed-btn{background:#F5A623}'
@@ -6319,7 +6363,9 @@ function adminBuildPrintableMerchantCardsHtml(codes){
 }
 function adminOpenMerchantCardPrintTab(codes){
   if(!codes || !codes.length){ toast(at('admin_cards_err_count'), true); return; }
-  var html = adminBuildPrintableMerchantCardsHtml(codes);
+  var formatEl = document.getElementById('mcards-print-format');
+  var format = formatEl ? formatEl.value : 'card';
+  var html = adminBuildPrintableMerchantCardsHtml(codes, format);
   var w = window.open('', '_blank');
   if(!w){ toast(at('admin_print_popup_blocked'), true); return; }
   w.document.open(); w.document.write(html); w.document.close();
@@ -6405,6 +6451,12 @@ function adminFixOrphanedMerchantCards(){
     }
   }).catch(function(){ toast(at('admin_dash_error_network'), true); });
 }
+function adminJumpToMerchantCard(code){
+  adminTab('merchant-cards');
+  var search=document.getElementById('mcards-search');
+  if(search) search.value=code;
+  adminLoadMerchantCards(1);
+}
 function adminMerchantCardsDateChanged(){ adminLoadMerchantCards(1); }
 function adminLoadMerchantCards(page){
   adminDpRender('mcards','adminMerchantCardsDateChanged');
@@ -6479,6 +6531,9 @@ function adminLoadMerchantCards(page){
           html+='<button style="padding:6px 10px;background:var(--rl);color:var(--re);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;font-size:10px" onclick="adminBlockMerchantCard(\''+c.card_code+'\')">'+at('admin_cards_block_btn')+'</button>';
         }
         if(c.status==='active' && c.phone_number){
+          html+='<button style="padding:6px 10px;background:var(--rl);color:var(--re);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;font-size:10px" onclick="adminBlockMerchantCard(\''+c.card_code+'\',\'all\')">'+at('admin_mcards_block_all_btn')+'</button>';
+        }
+        if(c.status==='active' && c.phone_number){
           html+='<button style="padding:6px 10px;background:var(--bord);color:var(--t1);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;font-size:10px" onclick="adminReleaseMerchantCard(\''+c.card_code+'\')">'+at('admin_cards_release_btn')+'</button>';
         }
         if(c.status==='blocked'){
@@ -6499,14 +6554,19 @@ function adminLoadMerchantCards(page){
     }
   }).catch(function(){ box.innerHTML='<div class="admin-empty">'+at('admin_dash_error_network')+'</div>'; });
 }
-function adminBlockMerchantCard(cardCode){
+// scope 'one' (defaut) ne bloque que cette carte ; scope 'all' bloque toutes
+// les cartes actives du marchand proprietaire (compte potentiellement
+// compromis dans son ensemble, pas juste une carte egaree).
+function adminBlockMerchantCard(cardCode, scope){
+  scope = scope==='all' ? 'all' : 'one';
   adminOpenConfirmModal({
-    icon:'🗑', title:at('admin_final_confirmation'), message:at('admin_cards_block_confirm_msg'),
+    icon:'🗑', title:at('admin_final_confirmation'),
+    message: scope==='all' ? at('admin_mcards_block_all_confirm_msg') : at('admin_cards_block_confirm_msg'),
     needsReason:true, reasonOptions:[at('admin_cards_reason_lost'),at('admin_cards_reason_stolen'),at('admin_cards_reason_test')],
-    confirmLabel:at('admin_cards_block_btn'), confirmColor:'var(--re)',
+    confirmLabel: scope==='all' ? at('admin_mcards_block_all_btn') : at('admin_cards_block_btn'), confirmColor:'var(--re)',
     onConfirm:function(reason){
-      apiCall('/admin?action=merchant-cards-block','POST',{admin_password:window._adminPw,card_code:cardCode,reason:reason},'').then(function(res){
-        if(res&&res.success){ toast(at('admin_cards_blocked_toast')); adminLoadMerchantCards(1); }
+      apiCall('/admin?action=merchant-cards-block','POST',{admin_password:window._adminPw,card_code:cardCode,reason:reason,scope:scope},'').then(function(res){
+        if(res&&res.success){ toast(scope==='all' ? at('admin_mcards_all_blocked_toast').replace('{n}',(res.data&&res.data.blocked_count)||0) : at('admin_cards_blocked_toast')); adminLoadMerchantCards(1); }
         else { toast((res&&res.message)||at('admin_error_generic'), true); }
       }).catch(function(){ toast(at('admin_dash_error_network'), true); });
     }

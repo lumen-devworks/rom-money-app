@@ -356,7 +356,7 @@ html,body{height:100%;background:#085041;overflow:hidden;color:var(--t1)}
       <div class="section">
         <div class="card" style="padding:0;overflow:hidden">
           <div class="tx-row" style="padding:14px 16px;cursor:pointer" onclick="openSheet('kyb-docs')"><div class="set-ico" style="background:rgba(138,90,16,.12);color:#8a5a10"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg></div><span style="font-size:14px;font-weight:600" data-i18n="profil_kyb_docs">Documents de l'entreprise</span></div>
-          <div class="tx-row" style="padding:14px 16px;cursor:pointer" onclick="openSheet('my-card')"><div class="set-ico" style="background:rgba(29,158,117,.12);color:var(--g)"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div><span style="font-size:14px;font-weight:600" data-i18n="profil_my_card">Ma carte marchande</span></div>
+          <div class="tx-row" style="padding:14px 16px;cursor:pointer" onclick="openSheet('my-card')"><div class="set-ico" style="background:rgba(29,158,117,.12);color:var(--g)"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div><span style="font-size:14px;font-weight:600" data-i18n="profil_my_card">Mes cartes marchandes</span></div>
           <div class="tx-row" style="padding:14px 16px;cursor:pointer" onclick="openSheet('notif-settings')"><div class="set-ico" style="background:rgba(29,158,117,.12);color:var(--g)"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></div><span style="font-size:14px;font-weight:600" data-i18n="profil_notifications">Notifications</span></div>
           <div class="tx-row" style="padding:14px 16px;cursor:pointer" onclick="openSheet('change-pin')"><div class="set-ico" style="background:rgba(15,110,86,.12);color:var(--gd)"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div><span style="font-size:14px;font-weight:600" data-i18n="profil_change_pin">Changer le PIN</span></div>
           <div class="tx-row" style="padding:14px 16px;cursor:pointer" onclick="toggleBio()"><div class="set-ico" style="background:rgba(29,158,117,.12);color:var(--g)"><svg viewBox="0 0 24 24"><path d="M12 1a5 5 0 00-5 5v3"/><path d="M12 1a5 5 0 015 5v3"/><path d="M7 9a5 5 0 0010 0"/><path d="M5 11.5a7 7 0 0014 0"/></svg></div><span style="font-size:14px;font-weight:600" id="prof-bio-label">Biométrie : Désactivée</span></div>
@@ -683,10 +683,10 @@ var I18N = {
   hist_no_tx:{fr:'Aucune transaction pour le moment.',en:'No transactions yet.'},
   send_searching:{fr:'Recherche...',en:'Searching...'},
   profil_kyb_docs:{fr:"Documents de l'entreprise",en:'Business documents'},
-  profil_my_card:{fr:'Ma carte marchande',en:'My merchant card'},
-  mycard_active_label:{fr:'Carte active',en:'Active card'},
+  profil_my_card:{fr:'Mes cartes marchandes',en:'My merchant cards'},
+  mycard_count_label:{fr:'Cartes actives ({n})',en:'Active cards ({n})'},
   mycard_activated_on:{fr:'Activée le {date}',en:'Activated on {date}'},
-  mycard_active_hint:{fr:'Posez cette carte sur votre comptoir - vos clients la scannent pour payer, sans avoir besoin de votre téléphone.',en:'Place this card on your counter - your customers scan it to pay, no need for your phone.'},
+  mycard_active_hint:{fr:'Posez ces cartes sur vos comptoirs - vos clients les scannent pour payer, sans avoir besoin de votre téléphone.',en:'Place these cards on your counters - your customers scan them to pay, no need for your phone.'},
   mycard_intro:{fr:"Vous avez une carte marchande vierge ? Entrez son code pour l'activer sur votre compte - elle deviendra utilisable immédiatement, sur votre comptoir.",en:'Have a blank merchant card? Enter its code to activate it on your account - it becomes usable immediately, on your counter.'},
   mycard_code_label:{fr:'Code de la carte',en:'Card code'},
   mycard_activate_btn:{fr:'Activer cette carte',en:'Activate this card'},
@@ -2422,35 +2422,41 @@ function uploadKybDoc(key, photo, extra){
   }).catch(function(){ toast(t('network_error'), true); });
 }
 
-// ── MA CARTE MARCHANDE ──
-// Contrairement au QR "Mon QR" (affiche depuis le telephone), cette carte
-// est imprimee et posee sur le comptoir - le marchand n'a rien a faire une
-// fois activee, les clients la scannent directement. Activation en
-// self-service (voir merchant_activate_card()), aucun agent implique.
+// ── MES CARTES MARCHANDES ──
+// Contrairement au QR "Mon QR" (affiche depuis le telephone), ces cartes sont
+// imprimees et posees sur le comptoir - le marchand n'a rien a faire une fois
+// activees, les clients les scannent directement. Activation en self-service
+// (voir merchant_activate_card()), aucun agent implique. Contrairement au
+// cote personnel (toujours une seule carte), un marchand peut activer
+// plusieurs cartes (grande surface a plusieurs comptoirs), d'ou une liste
+// plutot qu'une carte unique.
 function shMyCard(b){
   b.innerHTML = '<div class="empty-note">'+t('loading')+'</div>';
-  apiCall('/merchant?action=my-card','GET',null,getToken()).then(function(res){
+  apiCall('/merchant?action=my-cards','GET',null,getToken()).then(function(res){
     if(res && res.success){
-      renderMyCard(b, res.data && res.data.card);
+      renderMyCard(b, (res.data && res.data.cards) || []);
     } else {
       b.innerHTML = '<div class="empty-note" style="color:var(--rd)">'+((res&&res.message)||t('network_error'))+'</div>';
     }
   }).catch(function(){ b.innerHTML = '<div class="empty-note" style="color:var(--rd)">'+t('network_error')+'</div>'; });
 }
-function renderMyCard(b, card){
+function renderMyCard(b, cards){
   var loc = APP.lang==='en'?'en-US':'fr-FR';
-  if(card){
-    b.innerHTML = '<div class="card" style="text-align:center;padding:24px">'
-      +'<div style="font-size:11px;color:var(--t3);margin-bottom:6px">'+t('mycard_active_label')+'</div>'
-      +'<div style="font-family:monospace;font-size:20px;font-weight:800;letter-spacing:1px;margin-bottom:10px">'+adminEscBiz(card.card_code)+'</div>'
-      +'<div style="font-size:12px;color:var(--t2)">'+t('mycard_activated_on').replace('{date}', new Date(card.activated_at).toLocaleDateString(loc))+'</div>'
-      +'</div>'
-      +'<div style="font-size:11px;color:var(--t3);margin-top:14px;text-align:center">'+t('mycard_active_hint')+'</div>';
-  } else {
-    b.innerHTML = '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">'+t('mycard_intro')+'</div>'
-      +'<div class="frow"><label class="flabel">'+t('mycard_code_label')+'</label><input class="finput" id="mycard-code-input" placeholder="M1A2B3C4D5" style="text-transform:uppercase"></div>'
-      +'<button class="btn-g" onclick="doActivateMerchantCard()">'+t('mycard_activate_btn')+'</button>';
+  var html = '';
+  if(cards.length){
+    html += '<div style="font-size:11px;color:var(--t3);margin-bottom:10px">'+t('mycard_count_label').replace('{n}',cards.length)+'</div>';
+    html += cards.map(function(card){
+      return '<div class="card" style="text-align:center;padding:18px;margin-bottom:10px">'
+        +'<div style="font-family:monospace;font-size:18px;font-weight:800;letter-spacing:1px;margin-bottom:6px">'+adminEscBiz(card.card_code)+'</div>'
+        +'<div style="font-size:12px;color:var(--t2)">'+t('mycard_activated_on').replace('{date}', new Date(card.activated_at).toLocaleDateString(loc))+'</div>'
+        +'</div>';
+    }).join('');
+    html += '<div style="font-size:11px;color:var(--t3);margin-bottom:16px;text-align:center">'+t('mycard_active_hint')+'</div>';
   }
+  html += '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">'+t('mycard_intro')+'</div>'
+    +'<div class="frow"><label class="flabel">'+t('mycard_code_label')+'</label><input class="finput" id="mycard-code-input" placeholder="M1A2B3C4D5" style="text-transform:uppercase"></div>'
+    +'<button class="btn-g" onclick="doActivateMerchantCard()">'+t('mycard_activate_btn')+'</button>';
+  b.innerHTML = html;
 }
 function doActivateMerchantCard(){
   var codeEl = document.getElementById('mycard-code-input');
