@@ -6230,17 +6230,31 @@ function adminReactivateCard(cardCode){
 // stylee), mais le QR encode "MC|<code>" plutot que le code nu - c'est ce
 // prefixe qui permet a handleScannedQR() cote client de distinguer une
 // carte marchande scannee d'un simple numero/QR personnel, voir plus bas.
-function adminMerchantCardMarkup(code, qrId){
-  return '<div class="print-card">'
+// format optionnel (voir MCARD_PRINT_FORMATS, defini plus bas dans ce
+// fichier - dispo au moment de l'appel puisque tout le script s'execute
+// avant qu'un clic ne declenche cette fonction) : quand fourni, les
+// dimensions/tailles de police de l'aperçu ecran refletent reellement le
+// format choisi, au lieu d'afficher toujours la taille "carte" par defaut -
+// sinon impossible de voir a l'ecran qu'un autre format a ete selectionne.
+function adminMerchantCardMarkup(code, qrId, format){
+  var fmt = (typeof MCARD_PRINT_FORMATS!=='undefined' && MCARD_PRINT_FORMATS[format]) || (typeof MCARD_PRINT_FORMATS!=='undefined' ? MCARD_PRINT_FORMATS.card : null);
+  var sizeStyle = fmt ? 'width:'+fmt.w+'mm;height:'+fmt.h+'mm;padding:'+fmt.pad+'mm;border-radius:'+fmt.radius+'mm' : '';
+  var brandPad = fmt ? 'padding-left:'+(fmt.icon+1)+'mm' : '';
+  var iconStyle = fmt ? 'width:'+fmt.icon+'mm;height:'+fmt.icon+'mm;border-radius:'+(fmt.icon*.25)+'mm;transform:translateY(calc(-50% + '+(fmt.icon*.375)+'mm))' : '';
+  var brandnameStyle = fmt ? 'font-size:'+fmt.brand+'pt' : '';
+  var codeStyle = fmt ? 'font-size:'+fmt.code+'pt' : '';
+  var boxStyle = fmt ? 'width:'+fmt.qrBox+'mm;height:'+fmt.qrBox+'mm' : '';
+  var sloganStyle = fmt ? 'font-size:'+fmt.slogan+'pt' : '';
+  return '<div class="print-card" style="'+sizeStyle+'">'
     +'<div class="print-card-top-row">'
-    +'<div class="print-card-brand">'
-    +'<img src="./icon-512.png" class="print-card-icon" alt="ROM_MONEY">'
-    +'<div class="print-card-brandname">ROM_<span>MONEY</span></div>'
+    +'<div class="print-card-brand" style="'+brandPad+'">'
+    +'<img src="../business/icon-512.png" class="print-card-icon" alt="ROM_BUSINESS" style="'+iconStyle+'">'
+    +'<div class="print-card-brandname" style="'+brandnameStyle+'">ROM_<span>BUSINESS</span></div>'
     +'</div>'
-    +'<div class="print-card-code">'+code+'</div>'
+    +'<div class="print-card-code" style="'+codeStyle+'">'+code+'</div>'
     +'</div>'
-    +'<div class="print-card-box" id="'+qrId+'"></div>'
-    +'<div class="print-card-slogan">'+at('admin_mcards_slogan')+'</div>'
+    +'<div class="print-card-box" id="'+qrId+'" style="'+boxStyle+'"></div>'
+    +'<div class="print-card-slogan" style="'+sloganStyle+'">'+at('admin_mcards_slogan')+'</div>'
     +'</div>';
 }
 window._mcardsListCache = window._mcardsListCache || {};
@@ -6272,12 +6286,25 @@ function adminGenerateMerchantCards(){
   }).catch(function(){ if(btn) btn.disabled=false; toast(at('admin_dash_error_network'), true); });
 }
 function adminShowMerchantCardPreview(code){
+  var formatEl=document.getElementById('mcards-print-format');
+  var format=formatEl?formatEl.value:'card';
+  var fmt=MCARD_PRINT_FORMATS[format]||MCARD_PRINT_FORMATS.card;
   var overlay=document.createElement('div');
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px';
   overlay.onclick=function(e){ if(e.target===overlay) document.body.removeChild(overlay); };
+  var formatLabel=document.createElement('div');
+  formatLabel.style.cssText='color:#fff;font-size:13px;font-weight:700;text-align:center';
+  formatLabel.textContent=at('admin_mcards_format_label')+' : '+at('admin_mcards_format_'+format);
   var wrap=document.createElement('div');
-  wrap.innerHTML=adminMerchantCardMarkup(code, 'preview-mcard-qr');
-  wrap.style.cssText='transform:scale(1.6)';
+  wrap.innerHTML=adminMerchantCardMarkup(code, 'preview-mcard-qr', format);
+  // Echelle d'affichage adaptee a la taille reelle du format choisi, pour que
+  // l'apercu tienne a l'ecran meme pour un A5 (148x210mm) tout en restant
+  // proportionnellement fidele - une echelle fixe masquerait justement la
+  // difference de taille entre formats que cet apercu doit montrer.
+  var mmToPx=3.78, naturalHeightPx=fmt.h*mmToPx;
+  var maxHeightPx=window.innerHeight*0.55;
+  var scale=Math.min(1.6, maxHeightPx/naturalHeightPx);
+  wrap.style.cssText='transform:scale('+scale+')';
   var actions=document.createElement('div');
   actions.style.cssText='display:flex;gap:10px;margin-top:20px';
   var printBtn=document.createElement('button');
@@ -6289,7 +6316,7 @@ function adminShowMerchantCardPreview(code){
   closeBtn.textContent=at('admin_close_btn');
   closeBtn.onclick=function(){ document.body.removeChild(overlay); };
   actions.appendChild(printBtn); actions.appendChild(closeBtn);
-  overlay.appendChild(wrap); overlay.appendChild(actions);
+  overlay.appendChild(formatLabel); overlay.appendChild(wrap); overlay.appendChild(actions);
   document.body.appendChild(overlay);
   drawQR('preview-mcard-qr', 'MC|'+code, 160);
 }
@@ -6320,13 +6347,19 @@ var MCARD_PRINT_FORMATS = {
 function adminBuildPrintableMerchantCardsHtml(codes, format){
   var fmt = MCARD_PRINT_FORMATS[format] || MCARD_PRINT_FORMATS.card;
   var baseUrl = location.href.replace(/[^/]*$/, '');
+  // La carte represente un compte ROM_BUSINESS (marchand) - meme si c'est
+  // l'app ROM_MONEY qui la scanne cote client, le logo affiche doit etre
+  // celui du marchand, pas celui de ROM_MONEY. baseUrl pointe toujours vers
+  // le dossier money/ (cette page y vit) ; businessIconUrl le fait pointer
+  // vers le dossier voisin business/ a la place.
+  var businessIconUrl = baseUrl.replace(/money\/?$/, 'business/') + 'icon-512.png';
   var cardsHtml = codes.map(function(code){
     var qrDataUrl = adminMerchantCardsQrDataUrl(code, fmt.qrRes);
     return '<div class="print-card">'
       +'<div class="print-card-top-row">'
       +'<div class="print-card-brand">'
-      +'<img src="'+baseUrl+'icon-512.png" class="print-card-icon" alt="ROM_MONEY">'
-      +'<div class="print-card-brandname">ROM_<span>MONEY</span></div>'
+      +'<img src="'+businessIconUrl+'" class="print-card-icon" alt="ROM_BUSINESS">'
+      +'<div class="print-card-brandname">ROM_<span>BUSINESS</span></div>'
       +'</div>'
       +'<div class="print-card-code">'+code+'</div>'
       +'</div>'
