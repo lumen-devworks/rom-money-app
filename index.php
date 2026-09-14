@@ -51,13 +51,6 @@ define('CANCEL_MINS', 5);
 // ($module/switch plus bas) : un define() est execute dans l'ordre du
 // fichier, contrairement aux fonctions qui sont disponibles partout.
 define('MERCHANT_DOC_TYPES', ['id_recto','id_verso','rccm','dfe','patente','shop_photo']);
-// Plafond de cartes marchandes actives simultanees par compte - contrairement
-// aux cartes personnelles (toujours une seule), une grande surface a
-// plusieurs comptoirs peut avoir besoin de plusieurs cartes en parallele.
-// Un plafond reste utile pour eviter un abus (revente/detournement de cartes
-// vierges) - ajustable ici si un marchand legitime en a reellement besoin de
-// plus.
-define('MERCHANT_CARDS_MAX_ACTIVE', 10);
 // Documents d'agrement agent (ROM_GUICHET) : piece d'identite + photo du
 // local. Meme chiffrement (kyc_encrypt/decrypt), meme table-par-type que
 // MERCHANT_DOC_TYPES ci-dessus, mais ici le compte reste INACTIF
@@ -1112,8 +1105,9 @@ function merchant_document_list() {
 // marchand l'active lui-meme depuis son propre compte deja existant, en
 // tapant/scannant le code recu sur la carte vierge. Contrairement au cote
 // personnel (toujours une seule carte), un marchand peut activer plusieurs
-// cartes en parallele (grande surface a plusieurs comptoirs) - plafonne a
-// MERCHANT_CARDS_MAX_ACTIVE pour limiter les abus.
+// cartes en parallele (grande surface a plusieurs comptoirs) - plafonne au
+// reglage admin merchant_cards_max_active (voir app_settings_defs()) pour
+// limiter les abus, ajustable sans redeploiement depuis l'onglet Reglages.
 function merchant_activate_card() {
     $pl = merchant_auth(); $b = body();
     $cardCode = strtoupper(trim($b['card_code'] ?? ''));
@@ -1121,8 +1115,9 @@ function merchant_activate_card() {
     $card = q("SELECT * FROM merchant_physical_cards WHERE card_code=?",[$cardCode])->fetch();
     if(!$card) fail('Carte inconnue',404);
     if($card['status']!=='unassigned') fail('Cette carte est deja active ou bloquee',422);
+    $maxActive = (int)get_setting('merchant_cards_max_active', 10);
     $activeCount = (int)q("SELECT COUNT(*) FROM merchant_physical_cards WHERE merchant_id=? AND status='active'",[$pl['sub']])->fetchColumn();
-    if($activeCount >= MERCHANT_CARDS_MAX_ACTIVE) fail('Vous avez atteint la limite de '.MERCHANT_CARDS_MAX_ACTIVE.' cartes actives - contactez le support pour en activer davantage.',422);
+    if($activeCount >= $maxActive) fail('Vous avez atteint la limite de '.$maxActive.' cartes actives - contactez le support pour en activer davantage.',422);
     q("UPDATE merchant_physical_cards SET status='active', merchant_id=?, activated_at=NOW() WHERE id=?",[$pl['sub'],$card['id']]);
     admin_log('merchant_card_activate','success',null,'Carte '.$cardCode.' activee par le marchand lui-meme');
     ok(['card_code'=>$cardCode],'Carte activee');
@@ -6894,7 +6889,7 @@ function admin_merchant_search() {
             ORDER BY t.created_at DESC LIMIT 30",[$mwid,$mwid,$mwid])->fetchAll();
     }
     // Cartes marchandes physiques actives de ce compte - un marchand peut en
-    // avoir plusieurs (voir MERCHANT_CARDS_MAX_ACTIVE), utile pour l'admin de
+    // avoir plusieurs (voir le reglage merchant_cards_max_active), utile pour l'admin de
     // voir d'un coup d'oeil tous les numeros en circulation sur ce compte.
     $physicalCards = q("SELECT card_code, activated_at FROM merchant_physical_cards WHERE merchant_id=? AND status='active' ORDER BY activated_at DESC",[$m['id']])->fetchAll();
     ok(['id'=>$m['id'],'business_name'=>$m['business_name'],'phone_number'=>$m['phone_number'],
@@ -8363,6 +8358,7 @@ function app_settings_defs() {
         'fraud_unusual_min_amount'    => [20000, 'Montant plancher (inhabituel)'],
         'fraud_new_recipient_min_amount' => [50000, 'Montant plancher (nouveau destinataire)'],
         'fx_margin_rate'              => [0.01, 'Marge de change (0 = aucune)'],
+        'merchant_cards_max_active'   => [10, 'Plafond de cartes marchandes actives par compte'],
     ];
 }
 
@@ -8395,6 +8391,7 @@ function admin_update_settings() {
         if($key==='fraud_velocity_count' && $val < 2) fail('Le seuil de velocite doit etre d\'au moins 2 transactions');
         if($key==='fraud_velocity_minutes' && $val < 1) fail('La fenetre de velocite doit etre d\'au moins 1 minute');
         if($key==='fraud_unusual_multiplier' && $val < 2) fail('Le multiplicateur doit etre d\'au moins 2');
+        if($key==='merchant_cards_max_active' && $val < 1) fail('Le plafond de cartes marchandes doit etre d\'au moins 1');
         set_setting($key, (string)$val);
         $changes[] = ['key'=>$key, 'value'=>$val];
     }
@@ -9346,8 +9343,9 @@ function admin_reactivate_merchant_card() {
         ok(null,'Carte debloquee et remise en stock');
         return;
     }
+    $maxActive = (int)get_setting('merchant_cards_max_active', 10);
     $activeCount = (int)q("SELECT COUNT(*) FROM merchant_physical_cards WHERE merchant_id=? AND status='active'",[$card['merchant_id']])->fetchColumn();
-    if($activeCount >= MERCHANT_CARDS_MAX_ACTIVE) fail('Ce marchand a deja atteint la limite de '.MERCHANT_CARDS_MAX_ACTIVE.' cartes actives.',422);
+    if($activeCount >= $maxActive) fail('Ce marchand a deja atteint la limite de '.$maxActive.' cartes actives.',422);
     q("UPDATE merchant_physical_cards SET status='active', blocked_at=NULL, blocked_by_admin=NULL, blocked_reason=NULL WHERE id=?",[$card['id']]);
     admin_log('merchant_card_reactivate','success',$card['phone_number'],dk('d_ref_with_reason',['ref'=>$cardCode,'reason'=>'Carte retrouvee par le marchand']));
     ok(null,'Carte reactivee');
