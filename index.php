@@ -9420,7 +9420,18 @@ function admin_select_unprinted_merchant_cards() {
     check_admin_password($b);
     $count = (int)($b['count'] ?? 0);
     if($count < 1 || $count > 500) fail('Le nombre doit etre entre 1 et 500');
-    $rows = q("SELECT card_code FROM merchant_physical_cards WHERE status='unassigned' AND printed_at IS NULL ORDER BY created_at ASC LIMIT $count")->fetchAll();
+    // Doit respecter le filtre de format actuellement affiche - sinon la
+    // selection "N premieres jamais imprimees" pioche parmi tous les formats
+    // melanges, meme quand l'admin travaille specifiquement sur un format
+    // (ex: n'a que des cartes A5 sous les yeux mais se retrouve avec des
+    // cartes "carte standard" glissees dans sa selection).
+    $format = trim($b['format'] ?? '');
+    $where = "status='unassigned' AND printed_at IS NULL";
+    $params = [];
+    if(in_array($format, ['card','a6','a5'], true)){
+        $where .= " AND print_format=?"; $params[] = $format;
+    }
+    $rows = q("SELECT card_code FROM merchant_physical_cards WHERE $where ORDER BY created_at ASC LIMIT $count", $params)->fetchAll();
     ok(['codes'=>array_column($rows,'card_code')]);
 }
 

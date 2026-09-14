@@ -6506,10 +6506,23 @@ function adminSyncMerchantCardsCheckboxes(){
 function adminQuickSelectUnprintedMerchant(){
   var count=parseInt(document.getElementById('mcards-quickselect-count').value,10);
   if(!count || count<1 || count>500){ toast(at('admin_cards_err_count'), true); return; }
-  apiCall('/admin?action=merchant-cards-select-unprinted','POST',{admin_password:window._adminPw,count:count},'').then(function(res){
+  // Respecte le filtre de format actuellement actif - sinon la selection
+  // pioche parmi tous les formats melanges, meme quand seul un format precis
+  // est affiche/travaille a l'instant (voir admin_select_unprinted_merchant_cards()).
+  var format=document.getElementById('mcards-format-filter').value;
+  var payload={admin_password:window._adminPw,count:count};
+  if(format) payload.format=format;
+  apiCall('/admin?action=merchant-cards-select-unprinted','POST',payload,'').then(function(res){
     if(res&&res.success&&res.data&&res.data.codes){
       if(!res.data.codes.length){ toast(at('admin_cards_none_unprinted'), true); return; }
-      res.data.codes.forEach(function(code){ window._mcardsSelected.add(code); });
+      res.data.codes.forEach(function(code){
+        window._mcardsSelected.add(code);
+        // Le backend garantit que chaque code respecte le format filtre (si
+        // un filtre etait actif) - mis en cache tout de suite pour que
+        // l'impression de cette selection utilise le bon format sans
+        // dependre du chargement prealable de la page de la liste.
+        if(format){ window._mcardsListCache[code]=window._mcardsListCache[code]||{}; window._mcardsListCache[code].print_format=format; }
+      });
       adminRenderMerchantCardsSelectionToolbar();
       adminSyncMerchantCardsCheckboxes();
       toast(at('admin_cards_quickselect_toast').replace('{n}',res.data.codes.length));
