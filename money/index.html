@@ -12,6 +12,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="32x32" href="./favicon.png">
 <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
+<link rel="preload" as="image" href="./logo.jpg">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;font-family:'DM Sans',sans-serif}
@@ -401,7 +402,7 @@ html,body{height:100%;background:#085041;overflow:hidden;color:var(--t1)}
 
 <!-- SPLASH -->
 <div class="screen on" id="s-splash">
-  <div class="splash-logo"><img id="splash-logo-img" src="" alt="ROM_MONEY"></div>
+  <div class="splash-logo"><img id="splash-logo-img" src="./logo.jpg" alt="ROM_MONEY"></div>
   <div class="splash-title">ROM_MONEY</div>
   <div class="splash-sub" data-i18n="splash_sub">Votre portefeuille panafricain 🌍</div>
   <div class="loader"><div class="loader-bar"></div></div>
@@ -411,7 +412,7 @@ html,body{height:100%;background:#085041;overflow:hidden;color:var(--t1)}
 <div class="screen" id="s-register-welcome">
   <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">
     <div style="width:110px;height:110px;border-radius:26px;overflow:hidden;border:2px solid rgba(245,166,35,.3);margin-bottom:20px">
-      <img id="register-logo-img" src="" style="width:100%;height:100%;object-fit:cover" alt="ROM_MONEY">
+      <img id="register-logo-img" src="./logo.jpg" style="width:100%;height:100%;object-fit:cover" alt="ROM_MONEY">
     </div>
     <div style="font-size:26px;font-weight:900;line-height:1.25;margin-bottom:10px"><span data-i18n="welcome_title">Bienvenue sur</span><br><span style="color:var(--g)">ROM_MONEY</span></div>
     <div style="font-size:14px;color:var(--t2);line-height:1.6" data-i18n="welcome_desc">Envoyez et recevez de l'argent, payez vos factures et gérez votre épargne en toute sécurité.</div>
